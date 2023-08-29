@@ -3,32 +3,39 @@ import tree.bt_nodes as bt_nodes
 import py_trees
 import numpy as np
 import time
+from env import *
+import gymnasium as gym
 
 
 def build_tree():
     blackboard = py_trees.blackboard.Client(name="Global")
-    blackboard.register_key(key="client", access=py_trees.common.Access.WRITE)
-    blackboard.register_key(key="vehicle_name", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="env", access=py_trees.common.Access.WRITE)
     blackboard.register_key(key="subgoal", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="state", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="done", access=py_trees.common.Access.WRITE)
+    
     root = bt_nodes.move_to()
     return root, blackboard
 
 if __name__ == '__main__':
     dt = 1
+    z = -30
+    vel = 5
+    vehicle_name = "Drone1"
+    goal = np.array([8, 8, z])
+    client = airsim.MultirotorClient()
+    
     root, blackboard = build_tree()
+    blackboard.subgoal = goal
     
-    blackboard.vehicle_name = "Drone1"
-    blackboard.subgoal = np.array([8, 8, -10])
-    blackboard.client = airsim.MultirotorClient()
-    blackboard.client.confirmConnection()
-    blackboard.client.enableApiControl(True, blackboard.vehicle_name)
-    blackboard.client.armDisarm(True, blackboard.vehicle_name)
+    env = gym.make('AirSimEnv-v0', client=client, vel=vel, vehicle_name=vehicle_name, goal=goal)
+    blackboard.env = env
     
-    airsim.wait_key("Press any key to takeoff")
-    f = blackboard.client.takeoffAsync(vehicle_name=blackboard.vehicle_name)
-    f.join()
-    
+    blackboard.state, _ = blackboard.env.reset()
+    blackboard.done = False
     t = 0
-    while t < 100:
+    while not blackboard.done:
+        print(t)
         root.tick_once()
         time.sleep(dt)
+        t += 1
