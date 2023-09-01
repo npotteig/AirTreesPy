@@ -1,4 +1,4 @@
-import tree.bt_nodes as bt_nodes
+import navigation.bt_nodes as bt_nodes
 import py_trees
 import numpy as np
 import time
@@ -14,7 +14,6 @@ class Manager():
         self.index = 0
     
     def sample_goal(self, state, goal):
-        print("Subgoal Generated!!!")
         new_sg = self.subgoals[self.index]
         self.index += 1
         return new_sg

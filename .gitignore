@@ -1,1 +1,5 @@
 __pycache__/
+models_*
+replay_data/
+results/
+logs/
