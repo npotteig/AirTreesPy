@@ -16,6 +16,6 @@ CUDA_VISIBLE_DEVICES=${GPU} python eval.py \
 --delta 0.5 \
 --adj_factor 0.7 \
 --load \
---load_dir "./navigation/models_simple" \
+--load_dir "./navigation/models" \
 --load_replay_buffer "./navigation/replay_data/" \
 --seed ${SEED}

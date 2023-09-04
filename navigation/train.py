@@ -39,7 +39,8 @@ def evaluate_policy(env,
         avg_controller_rew = 0.
         global_steps = 0
         goals_achieved = 0
-        for eval_ep in range(eval_episodes):
+        collision_count = 0
+        for _ in range(eval_episodes):
             obs, info = env.reset()
 
             goal = obs["desired_goal"]
@@ -57,6 +58,8 @@ def evaluate_policy(env,
                 global_steps += 1
                 action = controller_policy.select_action(state, subgoal)
                 new_obs, reward, done, _, info = env.step(action)
+                if new_obs['observation'][-1] == 1:
+                    collision_count += 1
                 is_success = info['is_success']
                 if is_success:
                     env_goals_achieved += 1
@@ -76,12 +79,13 @@ def evaluate_policy(env,
                 achieved_goal = new_achieved_goal
 
         avg_reward /= eval_episodes
+        avg_collision_ct = collision_count / eval_episodes
         avg_controller_rew /= global_steps
         avg_step_count = global_steps / eval_episodes
         avg_env_finish = goals_achieved / eval_episodes
 
         print("---------------------------------------")
-        print("Evaluation over {} episodes:\nAvg Ctrl Reward: {:.3f}".format(eval_episodes, avg_controller_rew))
+        print("Evaluation over {} episodes:\nAvg Ctrl Reward: {:.3f}\nAvg Collision Count: {}".format(eval_episodes, avg_controller_rew, avg_collision_ct))
         print("Goals achieved: {:.1f}%".format(100*avg_env_finish))
         print("Avg Steps to finish: {:.1f}".format(avg_step_count))
         print("---------------------------------------")
@@ -100,7 +104,7 @@ def evaluate_policy(env,
             final_z = 0
             final_subgoal_z = 0
 
-        return avg_reward, avg_controller_rew, avg_step_count, avg_env_finish,\
+        return avg_reward, avg_controller_rew, avg_step_count, avg_env_finish, avg_collision_ct,\
                final_x, final_y, final_z, \
                final_subgoal_x, final_subgoal_y, final_subgoal_z
 
@@ -124,6 +128,7 @@ def run(args):
     client = airsim.MultirotorClient()
     client.confirmConnection()
     airobjects.spawn_walls(client, -200, 200, -32)
+    airobjects.spawn_obstacles(client, -32)
     
     env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name))
         
@@ -162,7 +167,7 @@ def run(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     file_name = "{}_{}_{}".format(args.env_name, args.algo, args.seed)
-    output_data = {"frames": [], "reward": [], "dist": []}
+    output_data = {"frames": [], "reward": [], "dist": [], 'collisions':[]}
 
     env.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -366,7 +371,7 @@ def run(args):
                 # Evaluate
                 if timesteps_since_eval >= args.eval_freq:
                     timesteps_since_eval = 0
-                    avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, \
+                    avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, avg_collision_count, \
                     final_x, final_y, final_z, final_subgoal_x, final_subgoal_y, final_subgoal_z = \
                         evaluate_policy(env, args.env_name, manager_policy, controller_policy,
                                         calculate_controller_reward, args.ctrl_rew_scale,
@@ -379,6 +384,7 @@ def run(args):
                     else:
                         output_data["reward"].append(avg_ep_rew)
                     output_data["dist"].append(-avg_controller_rew)
+                    output_data["collisions"].append(avg_collision_count)
                     
                     if args.save_models and total_timesteps % 100000 == 0:
                         controller_policy.save(args.save_dir, args.env_name, args.algo, args.version, args.seed)
@@ -480,6 +486,7 @@ def run(args):
         action_copy = action.copy()
 
         next_tup, manager_reward, env_done, _, info = env.step(action_copy)
+    
 
         # Update cumulative reward for the manager
         manager_transition['reward'] += manager_reward * args.man_rew_scale
@@ -487,10 +494,12 @@ def run(args):
         next_goal = next_tup["desired_goal"]
         next_achieved_goal = next_tup['achieved_goal']
         next_state = next_tup["observation"]
+        collide = next_state[-1]
 
         traj_buffer.append(next_achieved_goal)
-        ep_obs_seq.append(next_state)
-        ep_ac_seq.append(next_achieved_goal)
+        if not collide == 1:
+            ep_obs_seq.append(next_state)
+            ep_ac_seq.append(next_achieved_goal)
 
         # Append low level sequence for off policy correction
         manager_transition['actions_seq'].append(action)
@@ -501,6 +510,8 @@ def run(args):
                                                         args.ctrl_rew_scale, action)
         subgoal = controller_policy.subgoal_transition(achieved_goal, subgoal, next_achieved_goal)
 
+        if collide == 1:
+            controller_reward += -10
 
         controller_goal = subgoal
         if env_done:
@@ -572,7 +583,7 @@ def run(args):
             })
 
     # Final evaluation
-    avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, \
+    avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, avg_collision_count, \
     final_x, final_y, final_z, final_subgoal_x, final_subgoal_y, final_subgoal_z = \
         evaluate_policy(env, args.env_name, manager_policy, controller_policy, calculate_controller_reward,
                         args.ctrl_rew_scale, args.manager_propose_freq, len(evaluations))
@@ -584,6 +595,7 @@ def run(args):
     else:
         output_data["reward"].append(avg_ep_rew)
     output_data["dist"].append(-avg_controller_rew)
+    output_data["collisions"].append(avg_collision_count)
 
     if args.save_models:
         controller_policy.save(args.save_dir, args.env_name, args.algo, args.version, args.seed)

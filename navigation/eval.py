@@ -125,6 +125,7 @@ def run(args):
     client = airsim.MultirotorClient()
     client.confirmConnection()
     airobjects.spawn_walls(client, -200, 200, -32)
+    airobjects.spawn_obstacles(client, -32)
     
     env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name))
 

@@ -5,6 +5,7 @@ import numpy as np
 import time
 from env import *
 import gymnasium as gym
+import airmap.airmap_objects as airobjects
 
 class Manager():
     def __init__(self) -> None:
@@ -46,30 +47,27 @@ if __name__ == '__main__':
     client = airsim.MultirotorClient()
     client.confirmConnection()
     
-    pos1 = airsim.Vector3r(100, 0, -32)
-    pose1 = airsim.Pose(position_val=pos1)
-    pos2 = airsim.Vector3r(-100, 0, -32)
-    pose2 = airsim.Pose(position_val=pos2)
-    pos3 = airsim.Vector3r(0, 100, -32)
-    pose3 = airsim.Pose(position_val=pos3)
-    pos4 = airsim.Vector3r(0, -100, -32)
-    pose4 = airsim.Pose(position_val=pos4)
+    airobjects.destroy_walls(client)
+    airobjects.spawn_walls(client, -100, 100, -32)
+    airobjects.spawn_obstacles(client, -32)
     
-    scaleY = airsim.Vector3r(1, 200, 5)
-    scaleX = airsim.Vector3r(200, 1, 5)
-    client.simSpawnObject('my_cube', 'Cube', pose1, scaleY)
-    client.simSpawnObject('my_cube', 'Cube', pose2, scaleY)
-    client.simSpawnObject('my_cube', 'Cube', pose3, scaleX)
-    client.simSpawnObject('my_cube', 'Cube', pose4, scaleX)
     
-    # client.reset()
-    # client.enableApiControl(True, vehicle_name)
-    # client.armDisarm(True, vehicle_name)
-    # client.takeoffAsync(vehicle_name=vehicle_name).join()
+    # while True:
+    #     data_distance0 = client.getDistanceSensorData(distance_sensor_name="Distance0", vehicle_name="Drone1")
+    #     sensor_read = 0
+    #     if data_distance0.distance <= 10:
+    #         sensor_read = (10 - data_distance0.distance) / 10
+    #     state = client.simGetGroundTruthKinematics(vehicle_name)
+    #     pos = state.position
+    #     print(pos)
+    #     time.sleep(1)
+    client.reset()
+    client.enableApiControl(True, vehicle_name)
+    client.armDisarm(True, vehicle_name)
+    client.takeoffAsync(vehicle_name=vehicle_name).join()
     
-    # # Fixed Z Altitude
-    # client.moveToZAsync(-31, velocity=15).join()
-    # client.moveToPositionAsync(8, -150, -31, 5).join()
+    client.moveToZAsync(-35, velocity=15).join()
+    client.moveToPositionAsync(65, 80, -35, velocity=5).join()
     
     
     # manager = Manager()

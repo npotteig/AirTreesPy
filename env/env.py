@@ -61,8 +61,9 @@ class AirSimEnv(gym.Env):
         self.vehicle_name = vehicle_name
         
         self.goal_dim = 2
+        self._sensor_range = 10
         
-        self.observation_space = gym.spaces.Box(-200, 200, shape=(4,), dtype=float)
+        self.observation_space = gym.spaces.Box(-200, 200, shape=(13,), dtype=float)
         self.action_space = gym.spaces.Box(-5, 5, shape=(2,), dtype=float)
     
     def reset(self, seed=None, options=None):
@@ -95,8 +96,20 @@ class AirSimEnv(gym.Env):
         state = self.client.simGetGroundTruthKinematics(self.vehicle_name)
         pos = state.position
         vel = state.linear_velocity
+        readings = self._sensor_readings()
+        
         pos_np = np.array([pos.x_val, pos.y_val, vel.x_val, vel.y_val])
-        return pos_np
+        return np.concatenate([pos_np, readings.flat])
+    
+    def _sensor_readings(self):
+        sens_reads = np.zeros(9)
+        for i in range(8):
+            sensor_name = "Distance"+str(i)
+            dst = self.client.getDistanceSensorData(distance_sensor_name=sensor_name, vehicle_name=self.vehicle_name).distance
+            if dst <= self._sensor_range:
+                sens_reads[i] = (self._sensor_range - dst) / self._sensor_range
+        sens_reads[-1] = float(self.client.simGetCollisionInfo(self.vehicle_name).has_collided)
+        return sens_reads
     
     def seed(self, sd):
         np.random.seed(sd)
