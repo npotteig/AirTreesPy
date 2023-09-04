@@ -1,5 +1,5 @@
 import airsim
-import navigation.bt_nodes as bt_nodes
+import navigation.bt_nodes_simple as bt_nodes_simple
 import py_trees
 import numpy as np
 import time
@@ -29,12 +29,12 @@ def build_tree(manager_policy):
     blackboard.register_key(key="done", access=py_trees.common.Access.WRITE)
     
     root = py_trees.composites.Selector(name='AirTree', memory=False)
-    reach_goal = bt_nodes.ReachGoal()
+    reach_goal = bt_nodes_simple.ReachGoal()
     goal_loop = py_trees.composites.Sequence(name='GoalLoop', memory=True)
     root.add_children([reach_goal, goal_loop])
     
-    move_to = bt_nodes.move_to()
-    get_sg = bt_nodes.gen_sg(manager_policy=manager_policy)
+    move_to = bt_nodes_simple.move_to()
+    get_sg = bt_nodes_simple.gen_sg(manager_policy=manager_policy)
     goal_loop.add_children([get_sg, move_to])
     
     return root, blackboard
