@@ -25,22 +25,18 @@ def evaluate_policy(env,
                     controller_replay_buffer,
                     novelty_pq,
                     manager_propose_frequency=10,
-                    eval_idx=0,
                     eval_episodes=5,
                     ):
-    print("Starting evaluation number {}...".format(eval_idx))
     env.evaluate = True
     prefix = ""
     file_name = prefix + "_evaluation_0_8"
-    output_data = {"goal_success": [], "step_count": []}
+    output_data = {"goal_success": [], "step_count": [], "collisions": []}
 
     with torch.no_grad():
         avg_reward = 0.
         avg_controller_rew = 0.
         global_steps = 0
         goals_achieved = 0
-        collision_list = []
-        step_list = []
 
         for eval_ep in range(eval_episodes):
             obs, _ = env.reset()
@@ -51,6 +47,7 @@ def evaluate_policy(env,
             done = False
             step_count = 0
             env_goals_achieved = 0
+            collision_count = 0
             while not done:
                 if step_count % manager_propose_frequency == 0:
                     subgoal = manager_policy.sample_goal(state, goal)
@@ -60,6 +57,8 @@ def evaluate_policy(env,
                 global_steps += 1
                 action = controller_policy.select_action(state, subgoal)
                 new_obs, reward, done, trunc, info = env.step(action)
+                if new_obs['observation'][-1] == 1:
+                    collision_count += 1
                 
                 is_success = info['is_success']
                 if is_success:
@@ -79,6 +78,7 @@ def evaluate_policy(env,
                                                                   ctrl_rew_scale, action)
                 state = new_state
                 achieved_goal = new_achieved_goal
+            output_data['collisions'].append(collision_count)
             output_data['step_count'].append(step_count)
             output_data['goal_success'].append(env_goals_achieved)
 
@@ -89,12 +89,19 @@ def evaluate_policy(env,
 
         print("---------------------------------------")
         print("Evaluation over {} episodes:\nAvg Ctrl Reward: {:.3f}".format(eval_episodes, avg_controller_rew))
-        if "Gather" in env_name:
-            print("Avg reward: {:.1f}".format(avg_reward))
-        else:
-            print("Goals achieved: {:.1f}%".format(100*avg_env_finish))
-        print("Steps to finish:\n Avg: {}\n Med: {}\n Max: {}\n Min: {} \n Std Dev: {}".format(np.average(output_data['step_count']), np.median(output_data['step_count']), np.max(output_data['step_count']),
-                                                                                np.min(output_data['step_count']), np.std(output_data['step_count'])))
+        print("Collisions:\n Avg: {}\n Med: {}\n Max: {}\n Min: {} \n Std Dev: {}".format(
+            np.average(output_data['collisions']), 
+            np.median(output_data['collisions']),
+            np.max(output_data['collisions']),
+            np.min(output_data['collisions']), 
+            np.std(output_data['collisions'])))
+        print("Goals achieved: {:.1f}%".format(100*avg_env_finish))
+        print("Steps to finish:\n Avg: {}\n Med: {}\n Max: {}\n Min: {} \n Std Dev: {}".format(
+            np.average(output_data['step_count']), 
+            np.median(output_data['step_count']), 
+            np.max(output_data['step_count']),
+            np.min(output_data['step_count']), 
+            np.std(output_data['step_count'])))
         print("---------------------------------------")
 
         env.evaluate = False
@@ -234,9 +241,6 @@ def run(args):
         except Exception as e:
             print(e, "Loading failed.")
 
-    # Logging Parameters
-    evaluations = []
-
     # Novelty PQ and novelty algorithm
     if args.algo == 'higl' and args.use_novelty_landmark:
         if args.novelty_algo == 'rnd':
@@ -261,4 +265,4 @@ def run(args):
     avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, \
     final_x, final_y, final_z, final_subgoal_x, final_subgoal_y, final_subgoal_z = \
         evaluate_policy(env, args.env_name, manager_policy, controller_policy, calculate_controller_reward,
-                        args.ctrl_rew_scale, controller_buffer, novelty_pq, args.manager_propose_freq, len(evaluations))
+                        args.ctrl_rew_scale, controller_buffer, novelty_pq, args.manager_propose_freq)
