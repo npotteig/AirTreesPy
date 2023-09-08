@@ -4,40 +4,32 @@ import py_trees
 import numpy as np
 import time
 from env import *
+from env.env import AirWrapperEnv
 import gymnasium as gym
 import airmap.airmap_objects as airobjects
+import math
 
-class Manager():
-    def __init__(self) -> None:
-        self.subgoals = [np.array([20, 20, -30]),
-                         np.array([40, 25, -30]),
-                         np.array([125, 111, -30]),
-                         np.array([200, 200, -30])]
-        self.index = 0
+def calc_potential(sensor_info):
+    # magnitudes = [2, 1, 3, 0, 4, 7, 5, 6]
+    magnitudes = [0, 1, 7, 2, 6, 3, 5, 4]
+    resultant_x = sensor_info[0] * math.cos(math.radians(magnitudes[0] * 45))
+    resultant_y = sensor_info[1] * math.cos(math.radians(magnitudes[0] * 45))
     
-    def sample_goal(self, state, goal):
-        new_sg = self.subgoals[self.index]
-        self.index += 1
-        return new_sg
-
-def build_tree(manager_policy):
-    blackboard = py_trees.blackboard.Client(name="Global")
-    blackboard.register_key(key="env", access=py_trees.common.Access.WRITE)
-    blackboard.register_key(key="subgoal", access=py_trees.common.Access.WRITE)
-    blackboard.register_key(key='success', access=py_trees.common.Access.WRITE)
-    blackboard.register_key(key="state", access=py_trees.common.Access.WRITE)
-    blackboard.register_key(key="done", access=py_trees.common.Access.WRITE)
+    for i in range(1, 8):
+        angle = math.radians(magnitudes[i] * 45)
+        mag = sensor_info[i]
+        
+        x_component = mag * math.cos(angle)
+        y_component = mag * math.sin(angle)
+        
+        resultant_x += x_component
+        resultant_y += y_component
     
-    root = py_trees.composites.Selector(name='AirTree', memory=False)
-    reach_goal = bt_nodes_simple.ReachGoal()
-    goal_loop = py_trees.composites.Sequence(name='GoalLoop', memory=True)
-    root.add_children([reach_goal, goal_loop])
+    res_array = np.array([resultant_x, resultant_y])
+    # res_vec = res_array / np.linalg.norm(res_array)
     
-    move_to = bt_nodes_simple.move_to()
-    get_sg = bt_nodes_simple.gen_sg(manager_policy=manager_policy)
-    goal_loop.add_children([get_sg, move_to])
-    
-    return root, blackboard
+    return -res_array 
+        
 
 if __name__ == '__main__':
     dt = 0.1 
@@ -45,50 +37,57 @@ if __name__ == '__main__':
     vel = 10
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
+    env = AirWrapperEnv(gym.make("AirSimEnv-v0", client=client, dt=dt, vehicle_name=vehicle_name))
+    
     client.confirmConnection()
     
-    airobjects.destroy_walls(client)
+    airobjects.destroy_objects(client)
     airobjects.spawn_walls(client, -100, 100, -32)
     airobjects.spawn_obstacles(client, -32)
     
-    
-    # while True:
-    #     data_distance0 = client.getDistanceSensorData(distance_sensor_name="Distance0", vehicle_name="Drone1")
-    #     sensor_read = 0
-    #     if data_distance0.distance <= 10:
-    #         sensor_read = (10 - data_distance0.distance) / 10
-    #     state = client.simGetGroundTruthKinematics(vehicle_name)
-    #     pos = state.position
-    #     print(pos)
-    #     time.sleep(1)
-    client.reset()
-    client.enableApiControl(True, vehicle_name)
-    client.armDisarm(True, vehicle_name)
-    client.takeoffAsync(vehicle_name=vehicle_name).join()
-    
-    client.moveToZAsync(-35, velocity=15).join()
-    client.moveToPositionAsync(65, 80, -35, velocity=5).join()
-    
-    
-    # manager = Manager()
-    
-    # root, blackboard = build_tree(manager)
-    
-    # env = gym.make('AirSimEnv-v0', client=client, dt=dt, vehicle_name=vehicle_name)
-    # blackboard.env = env
-    
-    
-    # blackboard.state, _ = blackboard.env.reset()    
+    env.evaluate = True
+    obs, info = env.reset()
+    state = obs['observation']
+    done = False
+    intervene = False
+    actions_before_intervention = []
+    intervene_index = 1
+    thresh = 0.8
+    while not done:
+        if not intervene:
+            action = np.array([0, 5])
+            actions_before_intervention.append(state)
+        else:
+            potential = calc_potential(state[4:12])
+            action = np.clip(5 * potential, -5, 5) 
+            print(action)
+            # action = [0, 0]
+            # pos = actions_before_intervention[int(-1 * intervene_index)]
+            # client.moveToPositionAsync(pos[0]*10, pos[1]*10, -30, 5, vehicle_name=vehicle_name)
+            intervene_index += 1
+            
+        action_copy = action.copy()
+        # if np.any(obs['observation'][4:12] > 0):
+        #     action_copy = np.clip(action_copy, -3, 3)
+        # print(action_copy)
+        obs, rew, done, _, _ = env.step(action_copy)
         
-    # blackboard.done = False
-    # blackboard.success = False
-    # tick = 0
-    # while not blackboard.done:
+        next_state = obs['observation']
+        state = next_state
+        inter_temp = False
+        if np.any(next_state[4:12] > 0.7):
+            inter_temp = True
         
-    #     root.tick_once()
-    #     print('Tick', tick)
-    #     print(blackboard.state)
-    #     # print("\n")
-    #     # print(py_trees.display.unicode_tree(root=root, show_status=True))
-    #     tick += 1
-    #     time.sleep(dt)
+        
+        if inter_temp:
+            intervene = True
+        elif not inter_temp and intervene_index > 1:
+            intervene = False
+            actions_before_intervention = []
+            intervene_index = 1
+        
+        print(obs['observation'][4:12])
+    
+    
+    
+    

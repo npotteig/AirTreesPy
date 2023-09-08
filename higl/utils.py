@@ -13,10 +13,32 @@ from functools import total_ordering
 
 from itertools import compress
 
+import math
+
 # Code based on: 
 # https://github.com/openai/baselines/blob/master/baselines/deepq/replay_buffer.py
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+def calc_potential(sensor_info):
+    # Order of the Distance Sensors relevant to angle
+    magnitudes = [0, 1, 7, 2, 6, 3, 5, 4]
+    resultant_x = sensor_info[0] * math.cos(math.radians(magnitudes[0] * 45))
+    resultant_y = sensor_info[1] * math.cos(math.radians(magnitudes[0] * 45))
+    
+    for i in range(1, 8):
+        angle = math.radians(magnitudes[i] * 45)
+        mag = sensor_info[i]
+        
+        x_component = mag * math.cos(angle)
+        y_component = mag * math.sin(angle)
+        
+        resultant_x += x_component
+        resultant_y += y_component
+    
+    res_array = np.array([resultant_x, resultant_y])
+    
+    return -res_array 
 
 
 # Simple replay buffer

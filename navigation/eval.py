@@ -6,6 +6,7 @@ import higl.utils as utils
 import higl.higl as higl
 
 import airsim
+import math
 
 import gymnasium as gym
 from env import *
@@ -14,6 +15,13 @@ from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
 
+
+def rotate_to(target, source, ratio=1.0):
+    ang1 = np.arctan2(*target[::-1])
+    ang2 = np.arctan2(*source[::-1])
+    theta = (ang1 - ang2) % (2 * np.pi) * ratio
+    rot = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    return np.dot(rot, source)
 
 
 def evaluate_policy(env,
@@ -48,14 +56,25 @@ def evaluate_policy(env,
             step_count = 0
             env_goals_achieved = 0
             collision_count = 0
+            intervene = False
+            intervene_index = 1
             while not done:
                 if step_count % manager_propose_frequency == 0:
                     subgoal = manager_policy.sample_goal(state, goal)
+                    if np.any(state[4:12] > 0.80):
+                        potential = utils.calc_potential(state[4:12])
+                        subgoal += 1.0*potential
 
 
                 step_count += 1
                 global_steps += 1
-                action = controller_policy.select_action(state, subgoal)
+                if not intervene:
+                    action = controller_policy.select_action(state, subgoal)
+                else:
+                    potential = utils.calc_potential(state[4:12])
+                    action = np.clip(5 * potential, -5, 5)
+                    intervene_index = 2
+                    
                 new_obs, reward, done, trunc, info = env.step(action)
                 if new_obs['observation'][-1] == 1:
                     collision_count += 1
@@ -70,6 +89,18 @@ def evaluate_policy(env,
                 new_achieved_goal = new_obs['achieved_goal']
 
                 new_state = new_obs["observation"]
+                # print(new_state[:2])
+                
+                inter_temp = False
+                # print(new_state[4:12])
+                if np.any(new_state[4:12] > 0.80):
+                    inter_temp = True
+                    
+                # if inter_temp:
+                #     intervene = True
+                # elif not inter_temp and intervene_index > 1:
+                #     intervene = False
+                #     intervene_index = 1
 
                 subgoal = controller_policy.subgoal_transition(achieved_goal, subgoal, new_achieved_goal)
 
@@ -131,6 +162,7 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
+    airobjects.destroy_objects(client)
     airobjects.spawn_walls(client, -200, 200, -32)
     airobjects.spawn_obstacles(client, -32)
     

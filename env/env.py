@@ -1,18 +1,24 @@
 import gymnasium as gym
 import numpy as np
+import airmap.airmap_objects as airobjects
 
 class AirWrapperEnv():
     def __init__(self, base_env):
         self.evaluate = False
         self.base_env = base_env
         self.goal_dim = self.base_env.unwrapped.goal_dim
+        self.obs_info = airobjects.obstacle_info
     
     def reset(self):
         self.count = 0
         if self.evaluate:
             self.desired_goal = np.array([6.5, 8])
         else:
-            self.desired_goal = np.random.uniform((-10, -10), (10, 10))
+            valid_goal = False
+            while not valid_goal:
+                self.desired_goal = np.random.uniform((-10, -10), (10, 10))
+                for obstacle in self.obs_info:
+                    valid_goal = not airobjects.inside_object(self.desired_goal, obstacle)
             
         obs, info = self.base_env.reset()
         obs[:self.goal_dim] /= 10
@@ -35,7 +41,7 @@ class AirWrapperEnv():
             'desired_goal': self.desired_goal,
         }
         rew += self._get_reward(obs) 
-        info['is_success'] = rew > -2.5
+        info['is_success'] = rew > -0.5
         
         return next_obs, rew, done or self.count >= 500, trunc, info
     
@@ -61,7 +67,7 @@ class AirSimEnv(gym.Env):
         self.vehicle_name = vehicle_name
         
         self.goal_dim = 2
-        self._sensor_range = 10
+        self._sensor_range = 20
         
         self.observation_space = gym.spaces.Box(-200, 200, shape=(13,), dtype=float)
         self.action_space = gym.spaces.Box(-5, 5, shape=(2,), dtype=float)

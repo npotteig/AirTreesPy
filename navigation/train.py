@@ -40,6 +40,8 @@ def evaluate_policy(env,
         global_steps = 0
         goals_achieved = 0
         collision_count = 0
+        intervene = False
+        intervene_index = 1
         for _ in range(eval_episodes):
             obs, info = env.reset()
 
@@ -56,7 +58,13 @@ def evaluate_policy(env,
 
                 step_count += 1
                 global_steps += 1
-                action = controller_policy.select_action(state, subgoal)
+                if not intervene:
+                    action = controller_policy.select_action(state, subgoal)
+                else:
+                    potential = utils.calc_potential(state[4:12])
+                    action = np.clip(5 * potential, -5, 5) 
+            
+                    intervene_index = 2
                 new_obs, reward, done, _, info = env.step(action)
                 if new_obs['observation'][-1] == 1:
                     collision_count += 1
@@ -69,6 +77,16 @@ def evaluate_policy(env,
                 goal = new_obs["desired_goal"]
                 new_achieved_goal = new_obs['achieved_goal']
                 new_state = new_obs["observation"]
+                
+                inter_temp = False
+                if np.any(new_state[4:12] > 0.80):
+                    inter_temp = True
+                    
+                if inter_temp:
+                    intervene = True
+                elif not inter_temp and intervene_index > 1:
+                    intervene = False
+                    intervene_index = 1
 
                 subgoal = controller_policy.subgoal_transition(achieved_goal, subgoal, new_achieved_goal)
 
@@ -167,7 +185,7 @@ def run(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     file_name = "{}_{}_{}".format(args.env_name, args.algo, args.seed)
-    output_data = {"frames": [], "reward": [], "dist": [], 'collisions':[]}
+    output_data = {"frames": [], "reward": [], "dist": [], 'collisions':[], 'training_collisions':[]}
 
     env.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -283,6 +301,12 @@ def run(args):
     timesteps_since_print = 0
     done = True
     evaluations = []
+    
+    # Intervention Variables
+    intervene = False
+    actions_before_intervention = []
+    intervene_index = 1
+    train_collisions = 0
 
     ep_obs_seq = None
     ep_ac_seq = None
@@ -376,6 +400,10 @@ def run(args):
                         evaluate_policy(env, args.env_name, manager_policy, controller_policy,
                                         calculate_controller_reward, args.ctrl_rew_scale,
                                         args.manager_propose_freq, len(evaluations))
+                    
+                    print("Training Collisions:", train_collisions)
+                    output_data['training_collisions'].append(train_collisions)
+                    train_collisions = 0
 
                     evaluations.append([avg_ep_rew, avg_controller_rew, avg_steps])
                     output_data["frames"].append(total_timesteps)
@@ -464,6 +492,10 @@ def run(args):
             just_loaded = False
             episode_num += 1
 
+            # Intervention Variables
+            intervene = False
+            actions_before_intervention = []
+            intervene_index = 1
 
             subgoal = manager_policy.sample_goal(state, goal)
             timesteps_since_subgoal = 0
@@ -481,8 +513,21 @@ def run(args):
                 'achieved_goal_seq': [achieved_goal]
             })
 
-        action = controller_policy.select_action(state, subgoal)
-        action = ctrl_noise.perturb_action(action, -max_action, max_action)
+        
+        if not intervene:
+            action = controller_policy.select_action(state, subgoal)
+            action = ctrl_noise.perturb_action(action, -max_action, max_action)
+            actions_before_intervention.append(action)
+        else:
+            # if intervene_index >= len(actions_before_intervention):
+            #     intervene_index = len(actions_before_intervention)
+            # action = np.clip(-1 * np.array(actions_before_intervention[int(-1 * intervene_index)]), -5, 5)
+            # action = action.tolist()
+            # print(action)
+            potential = utils.calc_potential(state[4:12])
+            action = np.clip(5 * potential, -5, 5) 
+            
+            intervene_index = 2
         action_copy = action.copy()
 
         next_tup, manager_reward, env_done, _, info = env.step(action_copy)
@@ -511,7 +556,12 @@ def run(args):
         subgoal = controller_policy.subgoal_transition(achieved_goal, subgoal, next_achieved_goal)
 
         if collide == 1:
-            controller_reward += -10
+            train_collisions += 1
+        
+        inter_temp = False
+        if np.any(next_state[4:12] > 0.80):
+            controller_reward += -5
+            inter_temp = True
 
         controller_goal = subgoal
         if env_done:
@@ -538,6 +588,14 @@ def run(args):
             'actions_seq': [],
             'achieved_goal_seq': []
         })
+        
+        if inter_temp:
+            intervene = True
+        elif not inter_temp and intervene_index > 1:
+            intervene = False
+            actions_before_intervention = []
+            intervene_index = 1
+        
         controller_buffer.add(controller_transition)
 
         state = next_state
@@ -596,6 +654,7 @@ def run(args):
         output_data["reward"].append(avg_ep_rew)
     output_data["dist"].append(-avg_controller_rew)
     output_data["collisions"].append(avg_collision_count)
+    output_data['training_collisions'].append(train_collisions)
 
     if args.save_models:
         controller_policy.save(args.save_dir, args.env_name, args.algo, args.version, args.seed)
