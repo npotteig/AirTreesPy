@@ -9,7 +9,7 @@ CUDA_VISIBLE_DEVICES=${GPU} python eval.py \
 --version "${REWARD_SHAPING}" \
 --seed ${SEED} \
 --landmark_sampling fps \
---n_landmark_coverage 20 \
+--n_landmark_coverage 100 \
 --use_novelty_landmark \
 --novelty_algo rnd \
 --n_landmark_novelty 20 \

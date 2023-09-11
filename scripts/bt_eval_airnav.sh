@@ -9,13 +9,13 @@ CUDA_VISIBLE_DEVICES=${GPU} python bt_eval.py \
 --version "${REWARD_SHAPING}" \
 --seed ${SEED} \
 --landmark_sampling fps \
---n_landmark_coverage 20 \
+--n_landmark_coverage 100 \
 --use_novelty_landmark \
 --novelty_algo rnd \
 --n_landmark_novelty 20 \
 --delta 0.5 \
 --adj_factor 0.7 \
 --load \
---load_dir "./navigation/safe_slow/models" \
---load_replay_buffer "./navigation/safe_slow/replay_data/" \
+--load_dir "./navigation/models" \
+--load_replay_buffer "./navigation/replay_data/" \
 --seed ${SEED}

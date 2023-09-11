@@ -71,23 +71,20 @@ class Planner:
             final_goal = final_goal.detach().cpu().numpy()
 
         x, _, ag, _, g, _, _, _, _, _, _ = self.replay_buffer.sample(self.initial_sample)
-        landmarks = ag.copy()
-        state = x.copy()
-        achieved_goal = ag.copy()
-        # indices = coll.squeeze() == False
-        # indices = np.max(x[:, 6:-1], axis=1) < 0.90
-        # landmarks = ag[indices].copy()
-        # state = x[indices].copy()
-        # achieved_goal = ag[indices].copy()
-        # print(landmarks[coll.squeeze() == True])
+        # landmarks = ag.copy()
+        # state = x.copy()
+        # achieved_goal = ag.copy()
+        indices = np.max(x[:, 4:-1], axis=1) < 0.60
+        landmarks = ag[indices].copy()
+        state = x[indices].copy()
+        achieved_goal = ag[indices].copy()
 
         ld_cov_shape = landmarks.shape[0]
-        # print(ld_cov_shape)
+        print(ld_cov_shape)
 
         # Sample Coverage-based landmarks
         if self.landmark_cov_sampling == "fps":
             # build a pool of states
-            # random_idx = np.random.choice(len(landmarks), self.initial_sample)
             random_idx = np.random.choice(len(landmarks), ld_cov_shape)
             state = state[random_idx]
             landmarks = landmarks[random_idx]
@@ -137,15 +134,12 @@ class Planner:
         dists = self.clip_dist(dists)
         self.distances = dists
         dists, to = self.value_iteration(dists)
-        # self.distances2 = dists
 
-        # print(self.landmarks_cov_nov_fg)
-        # print(dists)
-        # afdsaf
         self.dists_ld2goal = dists[:, -len(fg):]
-        # print(self.dists_ld2goal)
-        # asfsaf
+    
         self.to = to[:, -len(fg):]
+        
+        # print(self.landmarks_cov_nov_fg)
 
         return self.landmarks_cov_nov_fg, self.dists_ld2goal
 
@@ -160,9 +154,6 @@ class Planner:
             final_goal = torch.Tensor(final_goal).to(self.agent.device)
 
         self.build_landmark_graph(final_goal.unsqueeze(0))
-        # print("Num Landmarks:", self.num_landmark_cov_nov )
-        # print(self.landmark_cov_nov)
-        # print(self.to)
 
     # This is called after eval_build_landmark_graph
     def get_next_landmark(self, cur_obs, cur_ag, final_goal, prev_ld_idx=None):
@@ -172,53 +163,26 @@ class Planner:
             cur_ag = torch.Tensor(cur_ag).to(self.agent.device).unsqueeze(0)
         if isinstance(final_goal, np.ndarray):
             final_goal = torch.Tensor(final_goal).to(self.agent.device).unsqueeze(0)
-
-        # print(cur_ag.shape)
-        # print(self.landmarks_cov_nov_fg.shape)
-        # afda
         dists_cur2ld = self.pairwise_dists(cur_obs, cur_ag, self.landmarks_cov_nov_fg)
         dists_cur2ld = torch.min(dists_cur2ld, dists_cur2ld * 0)
         dists_cur2ld = self.clip_dist(dists_cur2ld, reserve=False)
 
         dist = dists_cur2ld + self.dists_ld2goal.T
 
-        goal_idx = list(range(len(cur_obs)))
-        goal_idx_offset = list(range(self.num_landmark_cov_nov, len(self.landmarks_cov_nov_fg), 1))
-
         dist_through_ld = dist[:, :]
         if prev_ld_idx is not None:
-            # self.used_landmarks.append(prev_ld_idx)
-            # dist_through_ld[:, self.used_landmarks] -= 1000000
             prev_ld_idx = prev_ld_idx[0]
-            # adj_prev = self.distances[prev_ld_idx] > -1000000
             mask = torch.zeros(self.num_landmark_cov_nov+1).to(self.agent.device)
             mask[prev_ld_idx] += -1000000
-            # print(self.distances[prev_ld_idx, adj_prev])
-            # print(mask[adj_prev])
-            # afsadf
-            # I think that adj_prev is not necessary since the -1000000 will take care of argmax
+            
             dist_through_ld = self.distances[prev_ld_idx] + self.dists_ld2goal.T + mask
             ld_idx = torch.argmax(dist_through_ld, dim=1)
-            # indices = (adj_prev).nonzero()
-            # ld_idx = indices[temp_idx][0]
-            # print(ld_idx)
-            # afda
         else:
             ld_idx = torch.argmax(dist_through_ld, dim=1)
-            # print(ld_idx)
-        # dist_direct_goal = dist[goal_idx, goal_idx_offset]
-        # print(dist_direct_goal)
-        # asfdsaf
 
 
         # Choose the landmark with the shortest distance to the goal
-        # ld_idx = torch.argmax(dist_through_ld, dim=1)
-        # print(ld_idx)
         ld = self.landmarks_cov_nov_fg[ld_idx]
-        # If the distance to travel directly to the goal is less than traveling through the landmark, choose the goal
-        # print(dist_direct_goal)
-        # if torch.any(dist_direct_goal > self.goal_thr):
-        #     ld[dist_direct_goal > self.goal_thr] = final_goal[dist_direct_goal > self.goal_thr]
 
         return ld.squeeze(0).cpu().numpy(), ld_idx.cpu().numpy()
 

@@ -17,9 +17,12 @@ import airmap.airmap_objects as airobjects
 import navigation.bt_nodes_eval as bt_nodes
 import py_trees
 
+import time
+
 def build_bt(environment, 
              manager_policy, 
-             controller_policy, 
+             controller_policy,
+             controller_replay_buffer, 
              calculate_controller_reward, 
              ctrl_rew_scale, 
              manager_propose_frequency=10):
@@ -35,6 +38,10 @@ def build_bt(environment,
     blackboard.register_key(key="success", access=py_trees.common.Access.WRITE)
     blackboard.register_key(key="reward", access=py_trees.common.Access.WRITE)
     blackboard.register_key(key="manager_propose_frequency", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="sg_move_count", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="built_landmark_graph", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="landmark", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="ld_idx", access=py_trees.common.Access.WRITE)
 
     # Evaluation Metrics
     blackboard.register_key(key="avg_reward", access=py_trees.common.Access.WRITE)
@@ -49,14 +56,38 @@ def build_bt(environment,
     blackboard.env = environment
     blackboard.manager_propose_frequency = manager_propose_frequency
     
-    root = py_trees.composites.Selector(name='AirTree', memory=False)
+    root = py_trees.composites.Sequence(name='AirTreeSeq', memory=True)
+    potential_ld_fall = py_trees.composites.Selector(name='PotLdFall',memory=False)
+    control_loop_fall = py_trees.composites.Selector(name='CtrlFall', memory=False)
+    root.add_children([potential_ld_fall, control_loop_fall])
+    
+    retrieved_potential_ld = bt_nodes.RetrievedPotentialLds()
+    compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer)
+    potential_ld_fall.add_children([retrieved_potential_ld, compute_potential_ld])
+    
     reach_goal = bt_nodes.ReachGoal()
-    goal_loop = py_trees.composites.Sequence(name='GoalLoop', memory=True)
-    root.add_children([reach_goal, goal_loop])
+    goal_loop = py_trees.composites.Selector(name='GoalLoopFall', memory=False)
+    control_loop_fall.add_children([reach_goal, goal_loop])
+    
+    landmark_seq = py_trees.composites.Sequence(name='LdSeq', memory=True)
+    move_seq = py_trees.composites.Sequence(name='MoveSeq', memory=True)
+    goal_loop.add_children([landmark_seq, move_seq])
+    
+    close_to_ld = bt_nodes.CloseToLd()
+    get_next_ld = bt_nodes.GetNextLd(manager_policy)
+    landmark_seq.add_children([close_to_ld, get_next_ld])
+    
+    get_sg = bt_nodes.gen_sg(manager_policy)
+    lowlevel_loop = py_trees.composites.Selector(name='MoveLoopFall', memory=False)
+    move_seq.add_children([get_sg, lowlevel_loop])
     
     move_to = bt_nodes.move_to(controller_policy, calculate_controller_reward, ctrl_rew_scale)
-    get_sg = bt_nodes.gen_sg(manager_policy)
-    goal_loop.add_children([get_sg, move_to])
+    safe_seq = py_trees.composites.Sequence(name='SafeSeq', memory=False)
+    lowlevel_loop.add_children([safe_seq, move_to])
+    
+    not_safe = bt_nodes.NotSafe()
+    safe_move_to = bt_nodes.safe_move_to(controller_policy, calculate_controller_reward, ctrl_rew_scale)
+    safe_seq.add_children([not_safe, safe_move_to])
     
     return root, blackboard
 
@@ -89,6 +120,11 @@ def evaluate_policy(root,
             blackboard.step_count = 0
             blackboard.collision_count = 0
             blackboard.env_goals_achieved = 0
+            blackboard.sg_move_count = 1
+            
+            blackboard.built_landmark_graph = False
+            blackboard.landmark = blackboard.achieved_goal
+            blackboard.ld_idx = None
             tick = 0
             while not blackboard.done:
                 root.tick_once()
@@ -96,6 +132,7 @@ def evaluate_policy(root,
                 # print("\n")
                 # print(py_trees.display.unicode_tree(root=root, show_status=True))
                 # tick += 1
+                # time.sleep(1.0)
                 
             output_data['collisions'].append(blackboard.collision_count)
             output_data['step_count'].append(blackboard.step_count)
@@ -136,6 +173,7 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
+    airobjects.destroy_objects(client)
     airobjects.spawn_walls(client, -200, 200, -32)
     airobjects.spawn_obstacles(client, -32)
     
@@ -268,7 +306,7 @@ def run(args):
         novelty_pq = None
         RND = None
 
-    root, blackboard = build_bt(env, manager_policy, controller_policy, calculate_controller_reward, 1.0, args.manager_propose_freq)
+    root, blackboard = build_bt(env, manager_policy, controller_policy, controller_buffer, calculate_controller_reward, 1.0, args.manager_propose_freq)
 
     # Final evaluation
     avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, = \

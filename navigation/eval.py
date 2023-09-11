@@ -52,15 +52,29 @@ def evaluate_policy(env,
             goal = obs["desired_goal"]
             achieved_goal = obs["achieved_goal"]
             state = obs["observation"]
+            manager_policy.init_planner()
+            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer)
+            
+            ld = achieved_goal
+            ld_idx = None
+            cur_ld = 0
+            
             done = False
             step_count = 0
             env_goals_achieved = 0
             collision_count = 0
+            
             intervene = False
             intervene_index = 1
             while not done:
+                if -np.linalg.norm(ld - achieved_goal, axis=-1) > -1.0 or step_count == 0:
+                    if np.any(ld != goal):
+                        cur_ld += 1
+                        ld, ld_idx = manager_policy.planner.get_next_landmark(state, ld, goal, ld_idx)
+                    print(ld)
+                
                 if step_count % manager_propose_frequency == 0:
-                    subgoal = manager_policy.sample_goal(state, goal)
+                    subgoal = manager_policy.sample_goal(state, ld)
                     if np.any(state[4:12] > 0.80):
                         potential = utils.calc_potential(state[4:12])
                         subgoal += 1.0*potential
@@ -96,11 +110,11 @@ def evaluate_policy(env,
                 if np.any(new_state[4:12] > 0.80):
                     inter_temp = True
                     
-                # if inter_temp:
-                #     intervene = True
-                # elif not inter_temp and intervene_index > 1:
-                #     intervene = False
-                #     intervene_index = 1
+                if inter_temp:
+                    intervene = True
+                elif not inter_temp and intervene_index > 1:
+                    intervene = False
+                    intervene_index = 1
 
                 subgoal = controller_policy.subgoal_transition(achieved_goal, subgoal, new_achieved_goal)
 
