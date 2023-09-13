@@ -1,0 +1,58 @@
+{
+	"SeeDocsAt": "https://github.com/Microsoft/AirSim/blob/main/docs/settings.md",
+	"SettingsVersion": 1.2,
+	"SimMode": "Multirotor",
+	"ClockSpeed": 100,
+	"ViewMode":"NoDisplay",
+	
+	"Vehicles": {
+		"Drone1": {
+		  "VehicleType": "SimpleFlight",
+		  "X": 0, "Y": 0, "Z": -2,
+		  "Sensors": {
+		  	"Distance0": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": 0, "Pitch": 0, "Roll": 0
+			},
+			"Distance1": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": 45, "Pitch": 0, "Roll": 0
+			},
+			"Distance2": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": -45, "Pitch": 0, "Roll": 0
+			},
+			"Distance3": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": 90, "Pitch": 0, "Roll": 0
+			},
+			"Distance4": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": -90, "Pitch": 0, "Roll": 0
+			},
+			"Distance5": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": 135, "Pitch": 0, "Roll": 0
+			},
+			"Distance6": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": -135, "Pitch": 0, "Roll": 0
+			},
+			"Distance7": {
+			    "SensorType": 5,
+			    "Enabled" : true,
+			    "Yaw": 180, "Pitch": 0, "Roll": 0
+			}
+			
+		  }
+		}
+
+    }
+}

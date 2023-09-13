@@ -311,9 +311,9 @@ class gen_sg(py_trees.behaviour.Behaviour):
 
     def update(self) -> py_trees.common.Status:
         self.blackboard.subgoal = self.manager_policy.sample_goal(self.blackboard.state, self.blackboard.landmark)
-        if np.any(self.blackboard.state[4:12] > 0.80):
-            potential = utils.calc_potential(self.blackboard.state[4:12])
-            self.blackboard.subgoal += 1.0*potential
+        # if np.any(self.blackboard.state[4:12] > 0.80):
+        #     potential = utils.calc_potential(self.blackboard.state[4:12])
+        #     self.blackboard.subgoal += 1.0*potential
         self.blackboard.sg_move_count = 1
         new_status = py_trees.common.Status.SUCCESS
         return new_status
