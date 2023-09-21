@@ -7,6 +7,7 @@ from env import *
 from env.env import AirWrapperEnv
 import gymnasium as gym
 import airmap.airmap_objects as airobjects
+from airmap.blocks_tree_generator import build_blocks_world
 import math
 
 def calc_potential(sensor_info):
@@ -40,53 +41,16 @@ if __name__ == '__main__':
     env = AirWrapperEnv(gym.make("AirSimEnv-v0", client=client, dt=dt, vehicle_name=vehicle_name))
     
     client.confirmConnection()
+    build_blocks_world(client=client, load=True)
+    while True:
+        print(client.simGetGroundTruthKinematics(vehicle_name).position)
+    # airobjects.destroy_objects(client)
+    # airobjects.spawn_walls(client, -100, 100, -32)
+    # airobjects.spawn_obstacles(client, -32)
+    # obs, info = env.reset()
+    # client.moveByVelocityAsync(5, 5, 5, duration=10, drivetrain=airsim.DrivetrainType.ForwardOnly, yaw_mode=airsim.YawMode(is_rate=False)).join()
     
-    airobjects.destroy_objects(client)
-    airobjects.spawn_walls(client, -100, 100, -32)
-    airobjects.spawn_obstacles(client, -32)
-    
-    env.evaluate = True
-    obs, info = env.reset()
-    state = obs['observation']
-    done = False
-    intervene = False
-    actions_before_intervention = []
-    intervene_index = 1
-    thresh = 0.8
-    while not done:
-        if not intervene:
-            action = np.array([0, 5])
-            actions_before_intervention.append(state)
-        else:
-            potential = calc_potential(state[4:12])
-            action = np.clip(5 * potential, -5, 5) 
-            print(action)
-            # action = [0, 0]
-            # pos = actions_before_intervention[int(-1 * intervene_index)]
-            # client.moveToPositionAsync(pos[0]*10, pos[1]*10, -30, 5, vehicle_name=vehicle_name)
-            intervene_index += 1
-            
-        action_copy = action.copy()
-        # if np.any(obs['observation'][4:12] > 0):
-        #     action_copy = np.clip(action_copy, -3, 3)
-        # print(action_copy)
-        obs, rew, done, _, _ = env.step(action_copy)
-        
-        next_state = obs['observation']
-        state = next_state
-        inter_temp = False
-        if np.any(next_state[4:12] > 0.7):
-            inter_temp = True
-        
-        
-        if inter_temp:
-            intervene = True
-        elif not inter_temp and intervene_index > 1:
-            intervene = False
-            actions_before_intervention = []
-            intervene_index = 1
-        
-        print(obs['observation'][4:12])
+
     
     
     

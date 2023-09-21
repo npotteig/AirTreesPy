@@ -155,7 +155,7 @@ class GetNextLd(py_trees.behaviour.Behaviour):
                                                                                                         self.blackboard.goal,
                                                                                                         self.blackboard.ld_idx)
         new_status = py_trees.common.Status.SUCCESS
-        # print(self.blackboard.landmark)
+        print(self.blackboard.landmark)
         return new_status
 
     def terminate(self, new_status):

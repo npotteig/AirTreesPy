@@ -19,6 +19,7 @@ from env import *
 from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
+from airmap.blocks_tree_generator import build_blocks_world
 
 
 def evaluate_policy(env,
@@ -62,7 +63,7 @@ def evaluate_policy(env,
                     action = controller_policy.select_action(state, subgoal)
                 else:
                     potential = utils.calc_potential(state[4:12])
-                    action = np.clip(5 * potential, -5, 5) 
+                    action = np.clip(10 * potential, -10, 10) 
             
                     intervene_index = 2
                 new_obs, reward, done, _, info = env.step(action)
@@ -145,8 +146,9 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    airobjects.spawn_walls(client, -200, 200, -32)
-    airobjects.spawn_obstacles(client, -32)
+    # airobjects.spawn_walls(client, -200, 200, -32)
+    # airobjects.spawn_obstacles(client, -32)
+    build_blocks_world(client=client, load=True)
     
     env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name))
         
@@ -407,10 +409,7 @@ def run(args):
 
                     evaluations.append([avg_ep_rew, avg_controller_rew, avg_steps])
                     output_data["frames"].append(total_timesteps)
-                    if "Maze" in args.env_name or args.env_name in ["Reacher3D-v0", "Pusher-v0"]:
-                        output_data["reward"].append(avg_env_finish)
-                    else:
-                        output_data["reward"].append(avg_ep_rew)
+                    output_data["reward"].append(avg_env_finish)
                     output_data["dist"].append(-avg_controller_rew)
                     output_data["collisions"].append(avg_collision_count)
                     
@@ -648,10 +647,7 @@ def run(args):
 
     evaluations.append([avg_ep_rew, avg_controller_rew, avg_steps])
     output_data["frames"].append(total_timesteps)
-    if "Maze" in args.env_name or args.env_name in ["Reacher3D-v0", "Pusher-v0"]:
-        output_data["reward"].append(avg_env_finish)
-    else:
-        output_data["reward"].append(avg_ep_rew)
+    output_data["reward"].append(avg_env_finish)
     output_data["dist"].append(-avg_controller_rew)
     output_data["collisions"].append(avg_collision_count)
     output_data['training_collisions'].append(train_collisions)

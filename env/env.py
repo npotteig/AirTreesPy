@@ -1,25 +1,27 @@
 import gymnasium as gym
 import numpy as np
 import airmap.airmap_objects as airobjects
+import airmap.blocks_tree_generator as blocks_gen
+import time
 
 class AirWrapperEnv():
     def __init__(self, base_env):
         self.evaluate = False
         self.base_env = base_env
         self.goal_dim = self.base_env.unwrapped.goal_dim
-        self.obs_info = airobjects.obstacle_info
+        self.obs_info = blocks_gen.obstacle_info
     
     def reset(self):
         self.count = 0
         if self.evaluate:
-            self.desired_goal = np.array([6.5, 8])
+            self.desired_goal = np.array([8, 1])
         else:
             valid_goal = False
             while not valid_goal:
                 self.desired_goal = np.random.uniform((-10, -10), (10, 10))
                 for obstacle in self.obs_info:
                     valid_goal = not airobjects.inside_object(self.desired_goal, obstacle)
-            
+        self.prev_goal = np.array([0., 0.])
         obs, info = self.base_env.reset()
         obs[:self.goal_dim] /= 10
         
@@ -35,6 +37,7 @@ class AirWrapperEnv():
         self.count += 1
         obs, rew, done, trunc, info = self.base_env.step(action)
         obs[:self.goal_dim] /= 10
+        obs[:self.goal_dim] -= self.prev_goal
         next_obs = {
             'observation': obs.copy(),
             'achieved_goal': obs[:self.goal_dim],
@@ -44,6 +47,10 @@ class AirWrapperEnv():
         info['is_success'] = rew > -0.5
         
         return next_obs, rew, done or self.count >= 500, trunc, info
+    
+    def change_goal(self, new_goal):
+        self.prev_goal = self.desired_goal
+        self.desired_goal = new_goal - self.desired_goal
     
     def seed(self, sd):
         self.base_env.unwrapped.seed(sd)
@@ -70,7 +77,7 @@ class AirSimEnv(gym.Env):
         self._sensor_range = 20
         
         self.observation_space = gym.spaces.Box(-200, 200, shape=(13,), dtype=float)
-        self.action_space = gym.spaces.Box(-5, 5, shape=(2,), dtype=float)
+        self.action_space = gym.spaces.Box(-10, 10, shape=(2,), dtype=float)
     
     def reset(self, seed=None, options=None):
         self.client.reset()
@@ -79,7 +86,7 @@ class AirSimEnv(gym.Env):
         self.client.takeoffAsync(vehicle_name=self.vehicle_name).join()
         
         # Fixed Z Altitude
-        self.client.moveToZAsync(-30, velocity=15, vehicle_name=self.vehicle_name).join()
+        self.client.moveToZAsync(-15, velocity=15, vehicle_name=self.vehicle_name).join()
         
         obs = self._get_obs()
         
@@ -92,7 +99,7 @@ class AirSimEnv(gym.Env):
         #                             duration=self.dt).join()
         self.client.moveByVelocityZAsync(float(action[0]), 
                                     float(action[1]), 
-                                    -30, 
+                                    -15, 
                                     duration=self.dt).join()
         obs = self._get_obs()
         

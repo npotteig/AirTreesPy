@@ -14,6 +14,7 @@ from env import *
 from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
+from airmap.blocks_tree_generator import build_blocks_world
 
 
 def rotate_to(target, source, ratio=1.0):
@@ -72,23 +73,39 @@ def evaluate_policy(env,
                         cur_ld += 1
                         ld, ld_idx = manager_policy.planner.get_next_landmark(state, ld, goal, ld_idx)
                     print(ld)
+                # if -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0:
+                #     env.change_goal(np.array([12.5, 16]))
                 
                 if step_count % manager_propose_frequency == 0:
                     subgoal = manager_policy.sample_goal(state, ld)
-                    if np.any(state[4:12] > 0.80):
-                        potential = utils.calc_potential(state[4:12])
-                        subgoal += 1.0*potential
+                    # if np.any(state[4:12] > 0.80):
+                    #     potential = utils.calc_potential(state[4:12])
+                    #     subgoal += 1.0*potential
 
 
                 step_count += 1
                 global_steps += 1
-                if not intervene:
+                if np.all(state[4:] == 0):
+                    disp = ld - state[:2]
+                    dist = np.linalg.norm(disp)
+                    unit_vec = disp / dist
+                    action = 15 * unit_vec
+                elif not intervene:
                     action = controller_policy.select_action(state, subgoal)
                 else:
                     potential = utils.calc_potential(state[4:12])
-                    action = np.clip(5 * potential, -5, 5)
+                    action = np.clip(10 * potential, -10, 10)
                     intervene_index = 2
+
+                # if goal[0] == 6:
+                #     # print('got here')
+                #     disp = goal - state[:2]
+                #     dist = np.linalg.norm(disp)
+                #     unit_vec = disp / dist
+                #     action = 10 * unit_vec
                     
+                    
+
                 new_obs, reward, done, trunc, info = env.step(action)
                 if new_obs['observation'][-1] == 1:
                     collision_count += 1
@@ -176,9 +193,10 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    airobjects.destroy_objects(client)
-    airobjects.spawn_walls(client, -200, 200, -32)
-    airobjects.spawn_obstacles(client, -32)
+    # airobjects.destroy_objects(client)
+    # airobjects.spawn_walls(client, -200, 200, -32)
+    # airobjects.spawn_obstacles(client, -32)
+    build_blocks_world(client=client, load=True)
     
     env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name))
 

@@ -42,9 +42,3 @@ Then in a separate shell, in the root directory, execute the following:
 ```shell
 ./scripts/bt_eval_airnav.sh dense 0 2
 ```
-
-### Default (w/o BT components)
-```shell
-./scripts/eval_airnav.sh dense 0 2
-```
-

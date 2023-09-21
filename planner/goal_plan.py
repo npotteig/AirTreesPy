@@ -80,7 +80,7 @@ class Planner:
         achieved_goal = ag[indices].copy()
 
         ld_cov_shape = landmarks.shape[0]
-        print(ld_cov_shape)
+        # print(ld_cov_shape)
 
         # Sample Coverage-based landmarks
         if self.landmark_cov_sampling == "fps":
