@@ -5,6 +5,7 @@ SEED=$4
 
 CUDA_VISIBLE_DEVICES=${GPU} python train.py \
 --env_name "AirSimEnv-v0" \
+--type_of_env "large" \
 --reward_shaping ${REWARD_SHAPING} \
 --algo higl \
 --version "${REWARD_SHAPING}" \

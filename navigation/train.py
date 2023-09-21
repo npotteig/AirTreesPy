@@ -129,6 +129,7 @@ def evaluate_policy(env,
 
 
 def run(args):
+    
     if not os.path.exists("./navigation/results"):
         os.makedirs("./navigation/results")
     if not os.path.exists("./navigation/replay_data"):
@@ -146,11 +147,13 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    # airobjects.spawn_walls(client, -200, 200, -32)
-    # airobjects.spawn_obstacles(client, -32)
-    build_blocks_world(client=client, load=True)
+    if args.type_of_env == 'small':
+        airobjects.spawn_walls(client, -200, 200, -32)
+        airobjects.spawn_obstacles(client, -32)
+    elif args.type_of_env == 'large':
+        build_blocks_world(client=client, load=True)
     
-    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name))
+    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name), args.type_of_env)
         
 
     max_action = float(env.action_space.high[0])

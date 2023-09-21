@@ -5,11 +5,11 @@ import airmap.blocks_tree_generator as blocks_gen
 import time
 
 class AirWrapperEnv():
-    def __init__(self, base_env):
+    def __init__(self, base_env, type_of_env):
         self.evaluate = False
         self.base_env = base_env
         self.goal_dim = self.base_env.unwrapped.goal_dim
-        self.obs_info = blocks_gen.obstacle_info
+        self.obs_info = blocks_gen.obstacle_info if type_of_env == "large" else airobjects.obstacle_info
     
     def reset(self):
         self.count = 0
