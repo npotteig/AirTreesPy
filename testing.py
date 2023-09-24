@@ -38,12 +38,21 @@ if __name__ == '__main__':
     vel = 10
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
-    env = AirWrapperEnv(gym.make("AirSimEnv-v0", client=client, dt=dt, vehicle_name=vehicle_name))
-    
-    client.confirmConnection()
-    build_blocks_world(client=client, load=True)
-    while True:
-        print(client.simGetGroundTruthKinematics(vehicle_name).position)
+    env = AirWrapperEnv(gym.make("AirSimEnv-v0", client=client, dt=dt, vehicle_name=vehicle_name), "large")
+    valid_goal = False
+    lst_mine = [1, 2, 3, 4, 5]
+    ct = 0
+    while not valid_goal:
+        for i in range(len(lst_mine)):
+            print(i)
+            if lst_mine[i] == 3:
+                break
+        ct += 1
+
+    # client.confirmConnection()
+    # build_blocks_world(client=client, load=True)
+    # env.reset()
+    # client.moveToPositionAsync(32, -84, -30, velocity=15, vehicle_name=vehicle_name).join()
     # airobjects.destroy_objects(client)
     # airobjects.spawn_walls(client, -100, 100, -32)
     # airobjects.spawn_obstacles(client, -32)

@@ -14,13 +14,16 @@ class AirWrapperEnv():
     def reset(self):
         self.count = 0
         if self.evaluate:
-            self.desired_goal = np.array([8, 1])
+            self.desired_goal = np.array([8, -1])
         else:
             valid_goal = False
             while not valid_goal:
                 self.desired_goal = np.random.uniform((-10, -10), (10, 10))
+                test_goal = (self.desired_goal * 10).tolist()
                 for obstacle in self.obs_info:
-                    valid_goal = not airobjects.inside_object(self.desired_goal, obstacle)
+                    valid_goal = not airobjects.inside_object(test_goal, obstacle)
+                    if not valid_goal:
+                        break
         self.prev_goal = np.array([0., 0.])
         obs, info = self.base_env.reset()
         obs[:self.goal_dim] /= 10

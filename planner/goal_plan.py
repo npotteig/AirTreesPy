@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from .sample import farthest_point_sample
+from airmap.airmap_objects import inside_object
 
 """
 Planner module is derived from Map-planner (https://github.com/FangchenLiu/map_planner)
@@ -143,8 +144,57 @@ class Planner:
 
         return self.landmarks_cov_nov_fg, self.dists_ld2goal
 
+    def grid_build_landmark_graph(self, final_goal, offset, size_val, step_size, obstacle_info):
+        if isinstance(final_goal, torch.Tensor):
+            final_goal = final_goal.detach().cpu().numpy()
+        
+        x, y = np.meshgrid(np.arange(size_val, step=step_size), np.arange(size_val, step=step_size))
+        coordinates = np.column_stack((x.ravel(), y.ravel())) - offset
+        landmarks = []
+        for coord in coordinates:
+            coord_not_in_obs = True
+            coord_10 = coord * 10
+            for obj in obstacle_info:
+                if inside_object(coord_10 , obj):
+                    coord_not_in_obs = False
+                    break
+            if coord_not_in_obs:
+                landmarks.append(coord)
+        landmarks = np.array(landmarks)
+        state = np.zeros((landmarks.shape[0], 13))
+        achieved_goal = landmarks.copy()
+        state = torch.Tensor(state).to(self.agent.device)
+        landmarks = torch.Tensor(landmarks).to(self.agent.device)
+        achieved_goal = torch.Tensor(achieved_goal).to(self.agent.device)
+        
+        fg = torch.Tensor(final_goal).to(self.agent.device)
+        self.num_landmark_cov_nov = len(landmarks)
+        self.landmark_cov_nov = landmarks.clone()
+        self.landmarks_cov_nov_fg = torch.cat((landmarks, fg), dim=0)
+
+        dists = self.pairwise_dists_batch(state, achieved_goal, self.landmarks_cov_nov_fg)
+        dists = torch.min(dists, dists*0)
+        dists = torch.cat((dists, torch.zeros(len(final_goal), dists.shape[1], device=self.agent.device)-100000), dim=0)
+        dists = self.clip_dist(dists)
+        self.distances = dists
+        dists, to = self.value_iteration(dists)
+
+        self.dists_ld2goal = dists[:, -len(fg):]
+    
+        self.to = to[:, -len(fg):]
+        
+        print(len(self.landmarks_cov_nov_fg))
+
+        return self.landmarks_cov_nov_fg, self.dists_ld2goal
+        
+        
+        
+        
+                
+
+
     # This is used in evaluation so the landmark graph is only computed once
-    def eval_build_landmark_graph(self, final_goal, agent, replay_buffer, novelty_pq=None):
+    def eval_build_landmark_graph(self, final_goal, agent, replay_buffer, method='fps', offset=10, size_val=20, step_size=1, obstacle_info = None, novelty_pq=None):
         self.agent = agent
         self.replay_buffer = replay_buffer
         self.novelty_pq = novelty_pq
@@ -153,7 +203,11 @@ class Planner:
         if isinstance(final_goal, np.ndarray):
             final_goal = torch.Tensor(final_goal).to(self.agent.device)
 
-        self.build_landmark_graph(final_goal.unsqueeze(0))
+        if method == 'fps':
+            self.build_landmark_graph(final_goal.unsqueeze(0))
+        else:
+            self.grid_build_landmark_graph(final_goal.unsqueeze(0), offset, size_val, step_size, obstacle_info)
+            
 
     # This is called after eval_build_landmark_graph
     def get_next_landmark(self, cur_obs, cur_ag, final_goal, prev_ld_idx=None):

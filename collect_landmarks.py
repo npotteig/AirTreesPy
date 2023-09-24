@@ -1,6 +1,6 @@
 import argparse
 
-from navigation.bt_eval import run
+from navigation.collect_landmarks import run
 
 parser = argparse.ArgumentParser()
 
@@ -31,6 +31,7 @@ parser.add_argument("--man_act_lr", default=1e-4, type=float)
 parser.add_argument("--man_crit_lr", default=1e-3, type=float)
 parser.add_argument("--candidate_goals", default=10, type=int)
 parser.add_argument("--manager_propose_freq", "-k", default=10, type=int)
+parser.add_argument("--train_manager_freq", default=10, type=int)
 parser.add_argument("--discount", default=0.99, type=float)
 
 # Controller Parameters
@@ -72,7 +73,7 @@ parser.add_argument("--landmark_sampling", type=str, choices=["fps", "none"])
 parser.add_argument('--clip_v', type=float, default=-38., help="clip bound for the planner")
 parser.add_argument("--n_landmark_coverage", type=int, default=20)
 parser.add_argument("--initial_sample", type=int, default=1000)
-parser.add_argument("--goal_thr", type=float, default=-30.)
+parser.add_argument("--goal_thr", type=float, default=-10.)
 parser.add_argument("--planner_start_step", type=int, default=60000)
 
 # HIGL: Novelty
@@ -90,10 +91,14 @@ parser.add_argument("--no_pseudo_landmark", action="store_true")
 parser.add_argument("--discard_by_anet", action="store_true")
 parser.add_argument("--automatic_delta_pseudo", action="store_true")
 
+# Save
+parser.add_argument("--save_models", action="store_true")
+parser.add_argument("--save_dir", default="./navigation/models", type=str)
+parser.add_argument("--save_replay_buffer", type=str)
 
 # Load
 parser.add_argument("--load", action="store_true")
-parser.add_argument("--load_dir", default="./models", type=str)
+parser.add_argument("--load_dir", default="./navigation/models", type=str)
 parser.add_argument("--load_algo", type=str)
 parser.add_argument("--log_dir", default="./logs", type=str)
 parser.add_argument("--load_replay_buffer", type=str)

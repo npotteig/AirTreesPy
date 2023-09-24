@@ -15,14 +15,7 @@ from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
 from airmap.blocks_tree_generator import build_blocks_world
-
-
-def rotate_to(target, source, ratio=1.0):
-    ang1 = np.arctan2(*target[::-1])
-    ang2 = np.arctan2(*source[::-1])
-    theta = (ang1 - ang2) % (2 * np.pi) * ratio
-    rot = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
-    return np.dot(rot, source)
+from airmap.blocks_tree_generator import obstacle_info
 
 
 def evaluate_policy(env,
@@ -54,7 +47,7 @@ def evaluate_policy(env,
             achieved_goal = obs["achieved_goal"]
             state = obs["observation"]
             manager_policy.init_planner()
-            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer)
+            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, method='grid', step_size=2, obstacle_info=obstacle_info)
             
             ld = achieved_goal
             ld_idx = None
@@ -68,11 +61,13 @@ def evaluate_policy(env,
             intervene = False
             intervene_index = 1
             while not done:
-                if -np.linalg.norm(ld - achieved_goal, axis=-1) > -1.0 or step_count == 0:
-                    if np.any(ld != goal):
+                if -np.linalg.norm(ld - achieved_goal, axis=-1) > -1.0 or step_count == 0:    
+                    if -np.linalg.norm(goal - achieved_goal, axis=-1) <= -1.0:
                         cur_ld += 1
                         ld, ld_idx = manager_policy.planner.get_next_landmark(state, ld, goal, ld_idx)
-                    print(ld)
+                    else:
+                        ld = goal
+                    # print(ld)
                 # if -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0:
                 #     env.change_goal(np.array([12.5, 16]))
                 
@@ -90,20 +85,12 @@ def evaluate_policy(env,
                     dist = np.linalg.norm(disp)
                     unit_vec = disp / dist
                     action = 15 * unit_vec
-                elif not intervene:
-                    action = controller_policy.select_action(state, subgoal)
                 else:
-                    potential = utils.calc_potential(state[4:12])
-                    action = np.clip(10 * potential, -10, 10)
-                    intervene_index = 2
-
-                # if goal[0] == 6:
-                #     # print('got here')
-                #     disp = goal - state[:2]
-                #     dist = np.linalg.norm(disp)
-                #     unit_vec = disp / dist
-                #     action = 10 * unit_vec
-                    
+                    action = controller_policy.select_action(state, subgoal)
+                # else:
+                #     potential = utils.calc_potential(state[4:12])
+                #     action = np.clip(10 * potential, -10, 10)
+                #     intervene_index = 2                 
                     
 
                 new_obs, reward, done, trunc, info = env.step(action)
@@ -193,12 +180,14 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    # airobjects.destroy_objects(client)
-    # airobjects.spawn_walls(client, -200, 200, -32)
-    # airobjects.spawn_obstacles(client, -32)
-    build_blocks_world(client=client, load=True)
+    if args.type_of_env == "small":
+        airobjects.destroy_objects(client)
+        airobjects.spawn_walls(client, -200, 200, -17)
+        airobjects.spawn_obstacles(client, -17)
+    else:
+        build_blocks_world(client=client, load=True)
     
-    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name))
+    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name), args.type_of_env)
 
     max_action = float(env.action_space.high[0])
 
@@ -229,9 +218,6 @@ def run(args):
 
     torch.cuda.set_device(args.gid)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    file_name = "{}_{}_{}".format(args.env_name, args.algo, args.seed)
-    output_data = {"frames": [], "reward": [], "dist": []}
 
     env.seed(args.seed)
     torch.manual_seed(args.seed)

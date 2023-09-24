@@ -13,6 +13,7 @@ from env import *
 from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
+from airmap.blocks_tree_generator import build_blocks_world
 
 import navigation.bt_nodes_eval as bt_nodes
 import py_trees
@@ -173,11 +174,14 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    airobjects.destroy_objects(client)
-    airobjects.spawn_walls(client, -200, 200, -32)
-    airobjects.spawn_obstacles(client, -32)
+    if args.type_of_env == "small":
+        airobjects.destroy_objects(client)
+        airobjects.spawn_walls(client, -200, 200, -17)
+        airobjects.spawn_obstacles(client, -17)
+    else:
+        build_blocks_world(client=client, load=True)
     
-    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name))
+    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name), args.type_of_env)
 
     max_action = float(env.action_space.high[0])
 

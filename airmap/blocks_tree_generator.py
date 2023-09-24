@@ -78,11 +78,11 @@ def build_blocks_world(client, load=False):
                 if -200 <= float(row[1]) <= 200 and -200 <= float(row[2]) <= 200:
                     obstacle_info.append([float(row[1]), float(row[2]),
                                         float(row[4]), float(row[4])])
-                CylinderName = row[0]                   
-                client.simSpawnObject(CylinderName, 'Cylinder', pose, scale, physics_enabled=False, is_blueprint=False)
-                client.simSetSegmentationObjectID(CylinderName, random.randint(0,250))
+                    CylinderName = row[0]                   
+                    client.simSpawnObject(CylinderName, 'Cylinder', pose, scale, physics_enabled=False, is_blueprint=False)
+                    client.simSetSegmentationObjectID(CylinderName, random.randint(0,250))
         print("Objects spawned")
-        print(obstacle_info)
+        # print(obstacle_info)
     
     else:
     
