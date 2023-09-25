@@ -14,7 +14,7 @@ parser.add_argument("--algo", default="higl", type=str, choices=["higl", "hrac",
 parser.add_argument("--seed", default=2, type=int)
 parser.add_argument("--eval_freq", default=5e3, type=float)
 parser.add_argument("--max_timesteps", default=5e6, type=float)
-parser.add_argument("--type_of_env", default="small", type=str, choices=["small", "large"])
+parser.add_argument("--type_of_env", default="small", type=str, choices=["small", "ansr"])
 
 # Off-policy correction (from HIRO)
 parser.add_argument("--no_correction", action="store_true")
@@ -68,7 +68,7 @@ parser.add_argument("--delta", type=float, default=2)
 parser.add_argument("--adj_factor", default=0.5, type=float)
 
 # HIGL: Planner, Coverage
-parser.add_argument("--landmark_sampling", type=str, choices=["fps", "none"])
+parser.add_argument("--landmark_sampling", type=str, choices=["fps", "grid", "none"])
 parser.add_argument('--clip_v', type=float, default=-38., help="clip bound for the planner")
 parser.add_argument("--n_landmark_coverage", type=int, default=20)
 parser.add_argument("--initial_sample", type=int, default=1000)

@@ -1,14 +1,12 @@
-REWARD_SHAPING=$1
-TIMESTEPS=$2
-GPU=$3
-SEED=$4
+TIMESTEPS=$1
+GPU=$2
+SEED=$3
 
 CUDA_VISIBLE_DEVICES=${GPU} python collect_landmarks.py \
 --env_name "AirSimEnv-v0" \
---type_of_env "large" \
---reward_shaping ${REWARD_SHAPING} \
+--type_of_env "ansr" \
 --algo higl \
---version "${REWARD_SHAPING}" \
+--version "dense" \
 --seed ${SEED} \
 --max_timesteps ${TIMESTEPS} \
 --landmark_sampling fps \

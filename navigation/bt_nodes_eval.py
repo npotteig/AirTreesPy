@@ -30,7 +30,29 @@ class ReachGoal(py_trees.behaviour.Behaviour):
 
     def terminate(self, new_status):
         pass
-    
+
+class NotReadyForSG(py_trees.behaviour.Behaviour):
+
+    def __init__(self, name: str = "NotReadyForSG?"):
+        super().__init__(name=name)
+        self.blackboard = self.attach_blackboard_client()
+        self.blackboard.register_key(key="built_landmark_graph", access=py_trees.common.Access.READ)
+        self.blackboard.register_key(key='manager_propose_frequency', access=py_trees.common.Access.READ)
+        self.blackboard.register_key(key="sg_move_count", access=py_trees.common.Access.READ)
+
+    def setup(self):
+        pass
+
+    def initialise(self):
+        pass
+
+    def update(self):
+        new_status = py_trees.common.Status.FAILURE if (self.blackboard.sg_move_count  % (self.blackboard.manager_propose_frequency + 1) == 0)  else py_trees.common.Status.SUCCESS
+        return new_status
+
+    def terminate(self, new_status):
+        pass
+
 class CloseToLd(py_trees.behaviour.Behaviour):
 
     def __init__(self, name: str = "CloseToLd?"):
@@ -104,7 +126,7 @@ class NotSafe(py_trees.behaviour.Behaviour):
     
 class ComputePotentialLds(py_trees.behaviour.Behaviour):
 
-    def __init__(self, manager_policy, controller_policy, controller_replay_buffer, name: str = "ComputePotentialLds!"):
+    def __init__(self, manager_policy, controller_policy, controller_replay_buffer, step_size=1, obstacle_info=None, name: str = "ComputePotentialLds!"):
         super().__init__(name=name)
         self.blackboard = self.attach_blackboard_client()
         self.blackboard.register_key(key="built_landmark_graph", access=py_trees.common.Access.WRITE)
@@ -113,6 +135,8 @@ class ComputePotentialLds(py_trees.behaviour.Behaviour):
         self.manager_policy = manager_policy
         self.controller_policy = controller_policy
         self.controller_replay_buffer = controller_replay_buffer
+        self.obstacle_info = obstacle_info
+        self.step_size = step_size
 
     def setup(self):
         pass
@@ -122,7 +146,7 @@ class ComputePotentialLds(py_trees.behaviour.Behaviour):
 
     def update(self):
         self.manager_policy.init_planner()
-        self.manager_policy.planner.eval_build_landmark_graph(self.blackboard.goal, self.controller_policy, self.controller_replay_buffer)
+        self.manager_policy.planner.eval_build_landmark_graph(self.blackboard.goal, self.controller_policy, self.controller_replay_buffer, step_size=self.step_size, obstacle_info = self.obstacle_info)
         self.blackboard.built_landmark_graph = True
         new_status = py_trees.common.Status.SUCCESS
         return new_status
@@ -139,6 +163,7 @@ class GetNextLd(py_trees.behaviour.Behaviour):
         self.blackboard.register_key(key="ld_idx", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key='state', access=py_trees.common.Access.READ)
         self.blackboard.register_key(key='goal', access=py_trees.common.Access.READ)
+        self.blackboard.register_key(key='achieved_goal', access=py_trees.common.Access.READ)
 
         self.manager_policy = manager_policy
 
@@ -149,11 +174,13 @@ class GetNextLd(py_trees.behaviour.Behaviour):
         pass
 
     def update(self):
-        if np.any(self.blackboard.landmark != self.blackboard.goal):
+        if -np.linalg.norm(self.blackboard.goal - self.blackboard.achieved_goal, axis=-1) <= -1.0:
             self.blackboard.landmark, self.blackboard.ld_idx = self.manager_policy.planner.get_next_landmark(self.blackboard.state,
-                                                                                                        self.blackboard.landmark,
+                                                                                                      self.blackboard.landmark,
                                                                                                         self.blackboard.goal,
                                                                                                         self.blackboard.ld_idx)
+        else:
+            self.blackboard.landmark = self.blackboard.goal
         new_status = py_trees.common.Status.SUCCESS
         print(self.blackboard.landmark)
         return new_status
@@ -167,6 +194,7 @@ class move_to(py_trees.behaviour.Behaviour):
         super().__init__(name=name)
         self.blackboard = self.attach_blackboard_client()
         self.blackboard.register_key(key='subgoal', access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="landmark", access=py_trees.common.Access.READ)
         self.blackboard.register_key(key='goal', access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key='achieved_goal', access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key='state', access=py_trees.common.Access.WRITE)
@@ -198,7 +226,13 @@ class move_to(py_trees.behaviour.Behaviour):
         if (self.blackboard.sg_move_count % (self.blackboard.manager_propose_frequency + 1) == 0) :
             new_status = py_trees.common.Status.SUCCESS
         else:
-            action = self.controller_policy.select_action(self.blackboard.state, self.blackboard.subgoal)
+            if np.all(self.blackboard.state[4:] == 0):
+                disp = self.blackboard.landmark - self.blackboard.state[:2]
+                dist = np.linalg.norm(disp)
+                unit_vec = disp / dist
+                action = 15 * unit_vec
+            else:
+                action = self.controller_policy.select_action(self.blackboard.state, self.blackboard.subgoal)
             new_obs, self.blackboard.reward, done, _, info = self.blackboard.env.step(action)
             self.blackboard.success = info['is_success'] or done
                 
@@ -301,6 +335,7 @@ class gen_sg(py_trees.behaviour.Behaviour):
         self.blackboard.register_key(key="subgoal", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="state", access=py_trees.common.Access.READ)
         self.blackboard.register_key(key="sg_move_count", access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="built_landmark_graph", access=py_trees.common.Access.READ)
         self.manager_policy = manager_policy
         
     def setup(self):
@@ -310,12 +345,15 @@ class gen_sg(py_trees.behaviour.Behaviour):
         pass
 
     def update(self) -> py_trees.common.Status:
-        self.blackboard.subgoal = self.manager_policy.sample_goal(self.blackboard.state, self.blackboard.landmark)
-        # if np.any(self.blackboard.state[4:12] > 0.80):
-        #     potential = utils.calc_potential(self.blackboard.state[4:12])
-        #     self.blackboard.subgoal += 1.0*potential
-        self.blackboard.sg_move_count = 1
-        new_status = py_trees.common.Status.SUCCESS
+        if self.blackboard.built_landmark_graph:
+            self.blackboard.subgoal = self.manager_policy.sample_goal(self.blackboard.state, self.blackboard.landmark)
+            # if np.any(self.blackboard.state[4:12] > 0.80):
+            #     potential = utils.calc_potential(self.blackboard.state[4:12])
+            #     self.blackboard.subgoal += 1.0*potential
+            self.blackboard.sg_move_count = 1
+            new_status = py_trees.common.Status.SUCCESS
+        else:
+            new_status = py_trees.common.Status.FAILURE
         return new_status
 
     def terminate(self, new_status: py_trees.common.Status) -> None:

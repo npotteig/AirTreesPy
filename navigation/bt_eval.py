@@ -14,19 +14,14 @@ from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
 from airmap.blocks_tree_generator import build_blocks_world
+from airmap.blocks_tree_generator import obstacle_info
 
 import navigation.bt_nodes_eval as bt_nodes
 import py_trees
 
 import time
 
-def build_bt(environment, 
-             manager_policy, 
-             controller_policy,
-             controller_replay_buffer, 
-             calculate_controller_reward, 
-             ctrl_rew_scale, 
-             manager_propose_frequency=10):
+def build_blackboard(environment, manager_propose_frequency=10):
     blackboard = py_trees.blackboard.Client(name="Global")
     # Setup BT stuff here
     blackboard = py_trees.blackboard.Client(name="Global")
@@ -57,13 +52,23 @@ def build_bt(environment,
     blackboard.env = environment
     blackboard.manager_propose_frequency = manager_propose_frequency
     
+    return blackboard
+    
+
+def build_expert_bt(manager_policy, 
+             controller_policy,
+             controller_replay_buffer, 
+             calculate_controller_reward, 
+             ctrl_rew_scale):
+    
     root = py_trees.composites.Sequence(name='AirTreeSeq', memory=True)
     potential_ld_fall = py_trees.composites.Selector(name='PotLdFall',memory=False)
     control_loop_fall = py_trees.composites.Selector(name='CtrlFall', memory=False)
     root.add_children([potential_ld_fall, control_loop_fall])
     
     retrieved_potential_ld = bt_nodes.RetrievedPotentialLds()
-    compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer)
+    compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer, 
+                                                        step_size=2, obstacle_info=obstacle_info)
     potential_ld_fall.add_children([retrieved_potential_ld, compute_potential_ld])
     
     reach_goal = bt_nodes.ReachGoal()
@@ -90,9 +95,41 @@ def build_bt(environment,
     safe_move_to = bt_nodes.safe_move_to(controller_policy, calculate_controller_reward, ctrl_rew_scale)
     safe_seq.add_children([not_safe, safe_move_to])
     
-    return root, blackboard
+    return root
 
-
+def build_gpbt(manager_policy, 
+             controller_policy,
+             controller_replay_buffer, 
+             calculate_controller_reward, 
+             ctrl_rew_scale):
+    
+    root = py_trees.composites.Selector(name='AirTreeFall', memory=False)
+    safe_seq = py_trees.composites.Sequence(name='SafeSeq', memory=False)
+    landmark_seq = py_trees.composites.Sequence(name='LdSeq', memory=True)
+    move_seq = py_trees.composites.Sequence(name='MoveSeq', memory=True)
+    compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer, 
+                                                        step_size=2, obstacle_info=obstacle_info)
+    root.add_children([safe_seq, landmark_seq, move_seq, compute_potential_ld])
+    
+    not_safe = bt_nodes.NotSafe()
+    safe_move_to = bt_nodes.safe_move_to(controller_policy, calculate_controller_reward, ctrl_rew_scale)
+    safe_seq.add_children([not_safe, safe_move_to])
+    
+    close_to_ld = bt_nodes.CloseToLd()
+    get_next_ld = bt_nodes.GetNextLd(manager_policy)
+    reach_goal = bt_nodes.ReachGoal()
+    landmark_seq.add_children([close_to_ld, get_next_ld, reach_goal])
+    
+    sg_fall = py_trees.composites.Selector(name='SGFall', memory=False)
+    move_to = bt_nodes.move_to(controller_policy, calculate_controller_reward, ctrl_rew_scale)
+    move_seq.add_children([sg_fall, move_to])
+    
+    not_ready_sg = bt_nodes.NotReadyForSG()
+    get_sg = bt_nodes.gen_sg(manager_policy)
+    sg_fall.add_children([not_ready_sg, get_sg])
+    
+    return root
+    
 
 def evaluate_policy(root,
                     blackboard,
@@ -121,7 +158,7 @@ def evaluate_policy(root,
             blackboard.step_count = 0
             blackboard.collision_count = 0
             blackboard.env_goals_achieved = 0
-            blackboard.sg_move_count = 1
+            blackboard.sg_move_count = 0
             
             blackboard.built_landmark_graph = False
             blackboard.landmark = blackboard.achieved_goal
@@ -309,8 +346,10 @@ def run(args):
     else:
         novelty_pq = None
         RND = None
-
-    root, blackboard = build_bt(env, manager_policy, controller_policy, controller_buffer, calculate_controller_reward, 1.0, args.manager_propose_freq)
+    blackboard = build_blackboard(env, args.manager_propose_freq)
+    func_build_bt = build_expert_bt if args.bt_type == "expert" else build_gpbt
+    
+    root = func_build_bt(manager_policy, controller_policy, controller_buffer, calculate_controller_reward, 1.0)
 
     # Final evaluation
     avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, = \

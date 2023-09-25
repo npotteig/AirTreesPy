@@ -47,7 +47,7 @@ def evaluate_policy(env,
             achieved_goal = obs["achieved_goal"]
             state = obs["observation"]
             manager_policy.init_planner()
-            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, method='grid', step_size=2, obstacle_info=obstacle_info)
+            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, step_size=2, obstacle_info=obstacle_info)
             
             ld = achieved_goal
             ld_idx = None

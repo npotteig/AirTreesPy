@@ -194,7 +194,7 @@ class Planner:
 
 
     # This is used in evaluation so the landmark graph is only computed once
-    def eval_build_landmark_graph(self, final_goal, agent, replay_buffer, method='fps', offset=10, size_val=20, step_size=1, obstacle_info = None, novelty_pq=None):
+    def eval_build_landmark_graph(self, final_goal, agent, replay_buffer, offset=10, size_val=20, step_size=1, obstacle_info = None, novelty_pq=None):
         self.agent = agent
         self.replay_buffer = replay_buffer
         self.novelty_pq = novelty_pq
@@ -203,7 +203,7 @@ class Planner:
         if isinstance(final_goal, np.ndarray):
             final_goal = torch.Tensor(final_goal).to(self.agent.device)
 
-        if method == 'fps':
+        if self.landmark_cov_sampling == 'fps':
             self.build_landmark_graph(final_goal.unsqueeze(0))
         else:
             self.grid_build_landmark_graph(final_goal.unsqueeze(0), offset, size_val, step_size, obstacle_info)
