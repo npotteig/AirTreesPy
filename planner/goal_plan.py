@@ -186,12 +186,6 @@ class Planner:
         print(len(self.landmarks_cov_nov_fg))
 
         return self.landmarks_cov_nov_fg, self.dists_ld2goal
-        
-        
-        
-        
-                
-
 
     # This is used in evaluation so the landmark graph is only computed once
     def eval_build_landmark_graph(self, final_goal, agent, replay_buffer, offset=10, size_val=20, step_size=1, obstacle_info = None, novelty_pq=None):

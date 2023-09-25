@@ -9,7 +9,7 @@ class AirWrapperEnv():
         self.evaluate = False
         self.base_env = base_env
         self.goal_dim = self.base_env.unwrapped.goal_dim
-        self.obs_info = blocks_gen.obstacle_info if type_of_env == "large" else airobjects.obstacle_info
+        self.obs_info = blocks_gen.obstacle_info if type_of_env == "ansr" else airobjects.obstacle_info
     
     def reset(self):
         self.count = 0
