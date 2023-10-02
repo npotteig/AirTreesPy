@@ -9,12 +9,14 @@ class AirWrapperEnv():
         self.evaluate = False
         self.base_env = base_env
         self.goal_dim = self.base_env.unwrapped.goal_dim
+        self.reset_count = 0
         self.obs_info = blocks_gen.obstacle_info if type_of_env == "ansr" else airobjects.obstacle_info
-    
+        self.goal_list = np.array([[10, 10], [10, -10], [-10, -10], [-10, 10]])
+        
     def reset(self):
         self.count = 0
         if self.evaluate:
-            self.desired_goal = np.array([8, -1])
+            self.desired_goal = self.goal_list[self.reset_count]
         else:
             valid_goal = False
             while not valid_goal:
@@ -25,8 +27,11 @@ class AirWrapperEnv():
                     if not valid_goal:
                         break
         self.prev_goal = np.array([0., 0.])
+        self.cur_goal = self.desired_goal
         obs, info = self.base_env.reset()
         obs[:self.goal_dim] /= 10
+        self.reset_count += 1
+        self.reset_count %= 4
         
         next_obs = {
             'observation': obs.copy(),
@@ -52,8 +57,9 @@ class AirWrapperEnv():
         return next_obs, rew, done or self.count >= 500, trunc, info
     
     def change_goal(self, new_goal):
-        self.prev_goal = self.desired_goal
-        self.desired_goal = new_goal - self.desired_goal
+        self.prev_goal = self.cur_goal
+        self.cur_goal = new_goal
+        self.desired_goal = self.cur_goal - self.prev_goal
     
     def seed(self, sd):
         self.base_env.unwrapped.seed(sd)

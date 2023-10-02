@@ -38,6 +38,8 @@ def build_blackboard(environment, manager_propose_frequency=10):
     blackboard.register_key(key="built_landmark_graph", access=py_trees.common.Access.WRITE)
     blackboard.register_key(key="landmark", access=py_trees.common.Access.WRITE)
     blackboard.register_key(key="ld_idx", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="goal_list", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="goal_idx", access=py_trees.common.Access.WRITE)
 
     # Evaluation Metrics
     blackboard.register_key(key="avg_reward", access=py_trees.common.Access.WRITE)
@@ -97,6 +99,58 @@ def build_expert_bt(manager_policy,
     
     return root
 
+def build_goal_change_bt(manager_policy, 
+             controller_policy,
+             controller_replay_buffer, 
+             calculate_controller_reward, 
+             ctrl_rew_scale):
+    root = py_trees.composites.Selector(name='AirTreeFall', memory=False)
+    reach_final_goal = bt_nodes.ReachGoal(name="ReachFinalGoal?")
+    execution_seq = py_trees.composites.Sequence(name='ExecSeq', memory=False)
+    root.add_children([reach_final_goal, execution_seq])
+    
+    goal_change_fall = py_trees.composites.Selector(name='GoalChgFall',memory=False)
+    goal_loop = py_trees.composites.Selector(name='GoalLoopFall', memory=False)
+    execution_seq.add_children([goal_change_fall, goal_loop])
+    
+    not_need_new_goal = bt_nodes.NotChangeGoal()
+    chg_goal_seq = py_trees.composites.Sequence(name='ChgGoalSeq', memory=False)
+    goal_change_fall.add_children([not_need_new_goal, chg_goal_seq])
+    
+    chg_goal = bt_nodes.UpdateGoal()
+    compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer, 
+                                                        step_size=2, obstacle_info=obstacle_info)
+    chg_goal_seq.add_children([chg_goal, compute_potential_ld])
+    
+    landmark_seq = py_trees.composites.Sequence(name='LdSeq', memory=False)
+    move_seq = py_trees.composites.Sequence(name='MoveSeq', memory=False)
+    goal_loop.add_children([landmark_seq, move_seq])
+    
+    close_to_ld = bt_nodes.CloseToLd()
+    get_next_ld = bt_nodes.GetNextLd(manager_policy)
+    landmark_seq.add_children([close_to_ld, get_next_ld])
+    
+    sg_fall = py_trees.composites.Selector(name='SGFall', memory=False)
+    lowlevel_loop = py_trees.composites.Selector(name='MoveLoopFall', memory=False)
+    move_seq.add_children([sg_fall, lowlevel_loop])
+    
+    not_ready_sg = bt_nodes.NotReadyForSG()
+    get_sg = bt_nodes.gen_sg(manager_policy)
+    sg_fall.add_children([not_ready_sg, get_sg])
+    
+    move_to = bt_nodes.move_to(controller_policy, calculate_controller_reward, ctrl_rew_scale)
+    safe_seq = py_trees.composites.Sequence(name='SafeSeq', memory=False)
+    lowlevel_loop.add_children([safe_seq, move_to])
+    
+    not_safe = bt_nodes.NotSafe()
+    safe_move_to = bt_nodes.safe_move_to(controller_policy, calculate_controller_reward, ctrl_rew_scale)
+    safe_seq.add_children([not_safe, safe_move_to])
+    
+    return root
+    
+    
+    
+
 def build_gpbt(manager_policy, 
              controller_policy,
              controller_replay_buffer, 
@@ -147,8 +201,9 @@ def evaluate_policy(root,
 
         for eval_ep in range(eval_episodes):
             obs, _ = blackboard.env.reset()
-
-            blackboard.goal = obs["desired_goal"]
+            blackboard.env.desired_goal = np.array([0, 0])
+            blackboard.env.cur_goal = np.array([0, 0])
+            blackboard.goal = blackboard.env.desired_goal
             blackboard.achieved_goal = obs["achieved_goal"]
             blackboard.state = obs["observation"]
             
@@ -163,6 +218,9 @@ def evaluate_policy(root,
             blackboard.built_landmark_graph = False
             blackboard.landmark = blackboard.achieved_goal
             blackboard.ld_idx = None
+            
+            blackboard.goal_list = np.array([[8, -1], [10.5, 7], [14, 16]])
+            blackboard.goal_idx = 0
             tick = 0
             while not blackboard.done:
                 root.tick_once()
@@ -347,7 +405,7 @@ def run(args):
         novelty_pq = None
         RND = None
     blackboard = build_blackboard(env, args.manager_propose_freq)
-    func_build_bt = build_expert_bt if args.bt_type == "expert" else build_gpbt
+    func_build_bt = build_goal_change_bt if args.bt_type == "expert" else build_gpbt
     
     root = func_build_bt(manager_policy, controller_policy, controller_buffer, calculate_controller_reward, 1.0)
 

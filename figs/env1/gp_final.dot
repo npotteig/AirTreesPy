@@ -1,0 +1,33 @@
+digraph pastafarianism {
+ordering=out;
+graph [fontname="times-roman"];
+node [fontname="times-roman"];
+edge [fontname="times-roman"];
+AirTreeFall [fillcolor=cyan, fontcolor=black, fontsize=9, label=AirTreeFall, shape=octagon, style=filled];
+SafeSeq [fillcolor=orange, fontcolor=black, fontsize=9, label=SafeSeq, shape=box, style=filled];
+AirTreeFall -> SafeSeq;
+"NotSafe?" [fillcolor=gray, fontcolor=black, fontsize=9, label="NotSafe?", shape=ellipse, style=filled];
+SafeSeq -> "NotSafe?";
+"SafeMoveToSubGoal!" [fillcolor=gray, fontcolor=black, fontsize=9, label="SafeMoveToSubGoal!", shape=ellipse, style=filled];
+SafeSeq -> "SafeMoveToSubGoal!";
+LdSeq [fillcolor=orange, fontcolor=black, fontsize=9, label="Ⓜ LdSeq", shape=box, style=filled];
+AirTreeFall -> LdSeq;
+"CloseToLd?" [fillcolor=gray, fontcolor=black, fontsize=9, label="CloseToLd?", shape=ellipse, style=filled];
+LdSeq -> "CloseToLd?";
+"GetNextLd!" [fillcolor=gray, fontcolor=black, fontsize=9, label="GetNextLd!", shape=ellipse, style=filled];
+LdSeq -> "GetNextLd!";
+"ReachGoal?" [fillcolor=gray, fontcolor=black, fontsize=9, label="ReachGoal?", shape=ellipse, style=filled];
+LdSeq -> "ReachGoal?";
+MoveSeq [fillcolor=orange, fontcolor=black, fontsize=9, label="Ⓜ MoveSeq", shape=box, style=filled];
+AirTreeFall -> MoveSeq;
+SGFall [fillcolor=cyan, fontcolor=black, fontsize=9, label=SGFall, shape=octagon, style=filled];
+MoveSeq -> SGFall;
+"NotReadyForSG?" [fillcolor=gray, fontcolor=black, fontsize=9, label="NotReadyForSG?", shape=ellipse, style=filled];
+SGFall -> "NotReadyForSG?";
+"GenerateSubGoal!" [fillcolor=gray, fontcolor=black, fontsize=9, label="GenerateSubGoal!", shape=ellipse, style=filled];
+SGFall -> "GenerateSubGoal!";
+"MoveToSubGoal!" [fillcolor=gray, fontcolor=black, fontsize=9, label="MoveToSubGoal!", shape=ellipse, style=filled];
+MoveSeq -> "MoveToSubGoal!";
+"ComputePotentialLds!" [fillcolor=gray, fontcolor=black, fontsize=9, label="ComputePotentialLds!", shape=ellipse, style=filled];
+AirTreeFall -> "ComputePotentialLds!";
+}

@@ -7,6 +7,8 @@ import higl.higl as higl
 
 import airsim
 import math
+import os
+import pandas as pd
 
 import gymnasium as gym
 from env import *
@@ -15,7 +17,8 @@ from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
 from airmap.blocks_tree_generator import build_blocks_world
-from airmap.blocks_tree_generator import obstacle_info
+# from airmap.blocks_tree_generator import obstacle_info
+from airmap.airmap_objects import obstacle_info
 
 
 def evaluate_policy(env,
@@ -27,11 +30,11 @@ def evaluate_policy(env,
                     controller_replay_buffer,
                     novelty_pq,
                     manager_propose_frequency=10,
-                    eval_episodes=5,
+                    eval_episodes=100,
                     ):
     env.evaluate = True
     prefix = ""
-    file_name = prefix + "_evaluation_0_8"
+    file_name = prefix + "_evaluation"
     output_data = {"goal_success": [], "step_count": [], "collisions": []}
 
     with torch.no_grad():
@@ -41,6 +44,7 @@ def evaluate_policy(env,
         goals_achieved = 0
 
         for eval_ep in range(eval_episodes):
+            print(eval_ep)
             obs, _ = env.reset()
 
             goal = obs["desired_goal"]
@@ -48,7 +52,10 @@ def evaluate_policy(env,
             state = obs["observation"]
             manager_policy.init_planner()
             manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, step_size=2, obstacle_info=obstacle_info)
-            
+            select_goal_idx = np.random.randint(0, 101)
+            # Problem graph is built off of the goal chosen
+            # env.desired_goal = manager_policy.planner.landmarks_cov_nov_fg[select_goal_idx].cpu().numpy()
+            # goal = env.desired_goal
             ld = achieved_goal
             ld_idx = None
             cur_ld = 0
@@ -60,16 +67,43 @@ def evaluate_policy(env,
             
             intervene = False
             intervene_index = 1
+            
+            # goal_changes = np.array([[20, 20], [30, 30], [40, 40]])
+            # goal_changes_idx = 0
             while not done:
+                # if goal_changes_idx < 50 and -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0 :
+                #     potential_goal = env.cur_goal + 10
+                #     pot_goal_10 = (potential_goal * 10).tolist()
+                #     valid_goal = False
+                #     for obstacle in obstacle_info:
+                #         valid_goal = not airobjects.inside_object(pot_goal_10, obstacle)
+                #         if not valid_goal:
+                #             break
+                #     while not valid_goal:
+                #         potential_goal = env.cur_goal + np.random.uniform((-10, -10), (10, 10))
+                #         test_goal = (potential_goal * 10).tolist()
+                #         for obstacle in obstacle_info:
+                #             valid_goal = not airobjects.inside_object(test_goal, obstacle)
+                #             if not valid_goal:
+                #                 break
+                    
+                #     env.change_goal(potential_goal)
+                #     goal_changes_idx += 1
+                #     ld = np.array([0, 0])
+                #     cur_ld = 0
+                #     ld_idx = None
+                #     print(potential_goal)
+                    
+                #     manager_policy.planner.eval_build_landmark_graph(env.desired_goal, controller_policy, controller_replay_buffer, start=env.prev_goal, step_size=2, obstacle_info=obstacle_info)
                 if -np.linalg.norm(ld - achieved_goal, axis=-1) > -1.0 or step_count == 0:    
-                    if -np.linalg.norm(goal - achieved_goal, axis=-1) <= -1.0:
+                    if -np.linalg.norm(goal - achieved_goal, axis=-1) <= -1.5:
                         cur_ld += 1
                         ld, ld_idx = manager_policy.planner.get_next_landmark(state, ld, goal, ld_idx)
                     else:
                         ld = goal
                     # print(ld)
-                # if -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0:
-                #     env.change_goal(np.array([12.5, 16]))
+                
+                    
                 
                 if step_count % manager_propose_frequency == 0:
                     subgoal = manager_policy.sample_goal(state, ld)
@@ -85,12 +119,12 @@ def evaluate_policy(env,
                     dist = np.linalg.norm(disp)
                     unit_vec = disp / dist
                     action = 15 * unit_vec
-                else:
+                elif not intervene:
                     action = controller_policy.select_action(state, subgoal)
-                # else:
-                #     potential = utils.calc_potential(state[4:12])
-                #     action = np.clip(10 * potential, -10, 10)
-                #     intervene_index = 2                 
+                else:
+                    potential = utils.calc_potential(state[4:12])
+                    action = np.clip(10 * potential, -10, 10)
+                    intervene_index = 2                 
                     
 
                 new_obs, reward, done, trunc, info = env.step(action)
@@ -102,6 +136,7 @@ def evaluate_policy(env,
                     env_goals_achieved += 1
                     goals_achieved += 1
                     done = True
+                    print('Success')
 
                 goal = new_obs["desired_goal"]
                 new_achieved_goal = new_obs['achieved_goal']
@@ -167,8 +202,8 @@ def evaluate_policy(env,
             final_z = 0
             final_subgoal_z = 0
 
-        # output_df = pd.DataFrame(output_data)
-        # output_df.to_csv(os.path.join("./approach_safe/results_"+ file_name + ".csv"), float_format="%.4f", index=False)
+        output_df = pd.DataFrame(output_data)
+        output_df.to_csv(os.path.join("./navigation/safe_fast/results/results_"+ file_name + ".csv"), float_format="%.4f", index=False)
 
         return avg_reward, avg_controller_rew, avg_step_count, avg_env_finish, \
                final_x, final_y, final_z, \
