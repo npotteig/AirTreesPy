@@ -23,7 +23,7 @@ unzip pretrained.zip
 ## Training in Small AirSim Environment
 The small AirSim Environment is used to train RL policies from scratch that can then be transferred to other complex AirSim environments. The small environment consists of a 200x200 meter, where the drone spawns in the center. The boundary is outlined by a wall and the interior consists of obstacles (rectangular blocks).
 
-First airsim must be running in the background. Copy the contents of `airsim_settings/settings_train.json` to your AirSim settings.json. This is located in `/home/USER/Documents/AirSim`. 
+First airsim must be running in the background. Copy the contents of `airsim_settings/settings.json` to your AirSim settings.json. This is located in `/home/USER/Documents/AirSim`. 
 
 Notice that `ClockSpeed` and `NoDisplay` are set to increase the speed of simulation and prevent rendering the objects on screen. This speeds up training significantly. To run in headless mode in the Blocks environment, execute the following command:
 
@@ -39,13 +39,11 @@ Then in a separate shell, in the root directory, execute the following:
 ```
 This will save models to `navigation/models` that will then be loaded in evaluation.
 
-## Transfer Learning in ANSR Airsim Environment
+## Transfer Learning in Airsim Environment
 
-This environment is modelled off of the Airsim ROS2 repo, a 5x5 sq mi area consisting of tree-like objects (cylinders). Our environment only considers a 200x200 meter portion of the environment centered on the drone's spawn location.
+The transfer environment is a 5x5 sq mi area consisting of tree-like objects (cylinders). Our environment only considers a 300x300 meter portion of the environment centered on the drone's spawn location. The size of the environment can be modified in `airmap/blocks_tree_generator.py` in line 78.
 
 There are two types of learning we can accomplish when transfering to this environment. We can continue to learn the RL policies in the new environment, learn landmarks, or both.
-
-First let's move our already learned models, replay_data, and results in ```navigation``` to a new folder ```navigation/safe_fast```
 
 Always ensure AirSim is running before executing these scripts.
 
@@ -62,7 +60,7 @@ Always ensure AirSim is running before executing these scripts.
 
 
 ## Evaluation
-Copy the contents of `airsim_settings/settings_eval.json` to your AirSim settings.json. You can use the method to run AirSim from the training section if you do not want to visualize the results. This is located in `/home/USER/Documents/AirSim`.
+Copy the contents of `airsim_settings/settings.json` to your AirSim settings.json. `ClockSpeed` can be reduced and `NoDisplay` removed if you want to visualize the drone. This is located in `/home/USER/Documents/AirSim`.
 
 Run Blocks environment:
 ```shell
