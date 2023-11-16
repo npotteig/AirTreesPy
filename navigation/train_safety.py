@@ -27,7 +27,7 @@ def run(args):
         client = airsim.MultirotorClient()
         client.confirmConnection()
         
-        if args.type_of_env == "small":
+        if args.type_of_env == "training":
             airobjects.destroy_objects(client)
             airobjects.spawn_walls(client, -100, 100, -32)
             airobjects.spawn_obstacles(client, -32)

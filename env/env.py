@@ -8,7 +8,6 @@ import airsim
 class AirWrapperEnv():
     def __init__(self, base_env):
         self.evaluate = False
-        self.multi_goal = False
         self.base_env = base_env
         self.obs_info = self.base_env.obs_info
         self.goal_dim = self.base_env.unwrapped.goal_dim
@@ -23,20 +22,19 @@ class AirWrapperEnv():
         self.count = 0
         self.locked = False
         self.prev_max = 0
-        if not self.multi_goal:
-            if self.evaluate:
-                self.desired_goal = np.array([6.5, 8])
-                # self.reset_count = 3
-                # self.desired_goal = self.goal_list[self.reset_count]
-            else:
-                valid_goal = False
-                while not valid_goal:
-                    self.desired_goal = np.random.uniform((-10, -10), (10, 10))
-                    test_goal = (self.desired_goal * 10).tolist()
-                    for obstacle in self.obs_info:
-                        valid_goal = not airobjects.inside_object(test_goal, obstacle)
-                        if not valid_goal:
-                            break
+        if self.evaluate:
+            self.desired_goal = np.array([6.5, 8])
+            # self.reset_count = 3
+            # self.desired_goal = self.goal_list[self.reset_count]
+        else:
+            valid_goal = False
+            while not valid_goal:
+                self.desired_goal = np.random.uniform((-10, -10), (10, 10))
+                test_goal = (self.desired_goal * 10).tolist()
+                for obstacle in self.obs_info:
+                    valid_goal = not airobjects.inside_object(test_goal, obstacle)
+                    if not valid_goal:
+                        break
         self.prev_goal = self.base_env.init_pos / 10
         self.cur_goal = self.base_env.init_pos / 10
         obs, info = self.base_env.reset()
@@ -114,16 +112,16 @@ class AirWrapperEnv():
         
 
 class AirSimEnv(gym.Env):
-    def __init__(self, client, dt, vehicle_name="Drone1", randomize_start=False, type_of_env="small") -> None:
+    def __init__(self, client, dt, vehicle_name="Drone1", randomize_start=False, type_of_env="training") -> None:
         self.client = client
         self.dt = dt
         self.vehicle_name = vehicle_name
         self.randomize_start = randomize_start
-        self.obs_info = blocks_gen.obstacle_info if type_of_env == "ansr" else airobjects.obstacle_info
+        self.obs_info = blocks_gen.obstacle_info if type_of_env == "transfer" else airobjects.obstacle_info
         self.init_pos = np.array([0, 0])
         
         
-        if type_of_env == "small":
+        if type_of_env == "training":
             self.z = -30
         else:
             self.z = -15

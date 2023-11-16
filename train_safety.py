@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser()
 
 # Environment
 parser.add_argument("--env_name", required=True, type=str)
-parser.add_argument("--type_of_env", default="small", type=str, choices=["small", "ansr"])
+parser.add_argument("--type_of_env", default="training", type=str, choices=["training", "transfer"])
 
 # Model Specific
 parser.add_argument("--sample_data_episodes", default=2000., type=int)

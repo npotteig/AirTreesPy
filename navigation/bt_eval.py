@@ -234,7 +234,6 @@ def evaluate_policy(root,
                     eval_episodes=5,
                     ):
     blackboard.env.evaluate = True
-    blackboard.env.multi_goal = True
     file_name = "bt_eval_gp"
     output_data = {"goal_success": [], "step_count": [], "collisions": []}
 
@@ -246,7 +245,10 @@ def evaluate_policy(root,
 
         for eval_ep in range(eval_episodes):
             print(eval_ep)
+            
+            # Set Initial Position for Drone before env.reset
             blackboard.env.set_init_pos(np.array([5, 5]))
+            
             obs, _ = blackboard.env.reset()
             # blackboard.env.desired_goal = np.array([0, 0])
             # blackboard.env.cur_goal = np.array([0, 0])
@@ -316,10 +318,10 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    if args.type_of_env == "small":
+    if args.type_of_env == "training":
         airobjects.destroy_objects(client)
-        airobjects.spawn_walls(client, -200, 200, -17)
-        airobjects.spawn_obstacles(client, -17)
+        airobjects.spawn_walls(client, -200, 200, -32)
+        airobjects.spawn_obstacles(client, -32)
     else:
         build_blocks_world(client=client, load=True)
     

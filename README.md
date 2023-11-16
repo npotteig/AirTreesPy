@@ -12,6 +12,14 @@ Create a new virtual environment with Python==3.10 then execute this command:
 pip install -r requirements.txt
 ```
 
+## Pretrained Models
+To use pretrained data, as training runs can take hours, unzip the file provided. 
+Scripts are compatible with using pretrained weights. If you want to use your model data, you will need to modify scripts with location of your model data.
+
+```shell
+unzip pretrained.zip
+```
+
 ## Training in Small AirSim Environment
 The small AirSim Environment is used to train RL policies from scratch that can then be transferred to other complex AirSim environments. The small environment consists of a 200x200 meter, where the drone spawns in the center. The boundary is outlined by a wall and the interior consists of obstacles (rectangular blocks).
 
@@ -43,13 +51,13 @@ Always ensure AirSim is running before executing these scripts.
 
 ### Learn Landmarks only
 ```shell
-./scripts/collect_landmarks.sh 7e4 0 2
+./scripts/collect_landmarks.sh 1e5 0 2
 ```
 
 ### Learn Landmarks and Transfer Learn RL policies
 
 ```shell
-./scripts/load_airnav.sh 2e5 0 2
+./scripts/load_airnav.sh 25e4 0 2
 ```
 
 
@@ -63,10 +71,20 @@ Run Blocks environment:
 Then in a separate shell, in the root directory, execute the following:
 
 ### EBT
-There are multiple configurations for running the EBT. Small and ANSR are the two environments supported. FPS is the learned landmarks method, while Grid is a simple grid based landmark sampler. Expert is the EBT created by our knowledge and GP is one created with prior knowledge and genetic programming.
+There are multiple configurations for running the EBT. Training and Transfer are the two environments supported. FPS is the learned landmarks method, while Grid is a simple grid based landmark sampler. Expert is the EBT created by our knowledge and GP is one created with prior knowledge and genetic programming. Goal_Change_Expert supports traveling to multiple goals. Recommended to use grid landmarks with goal_change.
 
 ```shell
 ./scripts/bt_eval_airnav.sh ${ENV_TYPE} ${LANDMARK_SAMPLING_METHOD} ${BT_TYPE} ${GPU} ${SEED}
 
-./scripts/bt_eval_airnav.sh ['small', 'ansr'] ['fps', 'grid'] ['expert', 'gp'] 0 2
+./scripts/bt_eval_airnav.sh ['training', 'transfer'] ['fps', 'grid'] ['expert', 'goal_change_expert', 'gp'] 0 2
 ```
+
+#### Multi-Goal Navigation Example
+
+```shell
+./scripts/bt_eval_airnav.sh transfer grid goal_change_expert 0 2
+```
+
+Relevant Files to Look at:  
+* `navigation/bt_eval.py` - Inside evaluate_policy function, you can modify `blackboard.goal_list` to the list of goals/waypoints you prefer. You can modify `blackboard.env.set_init_pos` parameter to change initial position of drone. Both input meters/10 units (i.e. 5.5 -> 55 meters).
+* `navigation/bt_eval_nodes.py` - Implementation of the behavior tree nodes

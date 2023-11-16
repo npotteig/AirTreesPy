@@ -150,11 +150,11 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    if args.type_of_env == 'small':
+    if args.type_of_env == 'training':
         airobjects.destroy_objects(client)
         airobjects.spawn_walls(client, -200, 200, -32)
         airobjects.spawn_obstacles(client, -32)
-    elif args.type_of_env == 'ansr':
+    elif args.type_of_env == 'transfer':
         build_blocks_world(client=client, load=True)
     
     env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env))
