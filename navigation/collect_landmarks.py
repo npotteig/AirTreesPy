@@ -10,16 +10,163 @@ from collections import OrderedDict
 import higl.utils as utils
 import higl.higl as higl
 from higl.models import ANet
+from higl.safety_layer import SafetyLayer
 
 import airsim
 
 import gymnasium as gym
 from env import *
 
+import time
+
 from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
 from airmap.blocks_tree_generator import build_blocks_world
+from airmap.blocks_tree_generator import obstacle_info as blocks_obstacle_info
+from airmap.airmap_objects import obstacle_info as air_obstacle_info
+
+def evaluate_policy(env,
+                    env_name,
+                    manager_policy,
+                    controller_policy,
+                    safe_layer,
+                    calculate_controller_reward,
+                    ctrl_rew_scale,
+                    controller_replay_buffer,
+                    obstacle_info,
+                    manager_propose_frequency=10,
+                    eval_idx = 0,
+                    eval_episodes=5,
+                    ):
+    output_data = {"goal_success": [], "step_count": [], "collisions": []}
+
+    with torch.no_grad():
+        avg_reward = 0.
+        avg_controller_rew = 0.
+        global_steps = 0
+        goals_achieved = 0
+
+        for eval_ep in range(eval_episodes):
+            obs, _ = env.reset()
+
+            goal = obs["desired_goal"]
+            achieved_goal = obs["achieved_goal"]
+            state = obs["observation"]
+            manager_policy.init_planner()
+            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, step_size=1, obstacle_info=obstacle_info)
+            ld = achieved_goal
+            ld_idx = None
+            cur_ld = 0
+            
+            done = False
+            step_count = 0
+            env_goals_achieved = 0
+            collision_count = 0
+            
+            intervene = False
+            intervene_index = 1
+            
+            while not done:
+                if -np.linalg.norm(ld - achieved_goal, axis=-1) > -1.0 or step_count == 0:    
+                    if -np.linalg.norm(goal - achieved_goal, axis=-1) <= -1.5:
+                        cur_ld += 1
+                        ld, ld_idx = manager_policy.planner.get_next_landmark(state, ld, goal, ld_idx)
+                    else:
+                        ld = goal 
+                
+                if step_count % manager_propose_frequency == 0:
+                    subgoal = manager_policy.sample_goal(state, ld)
+
+                step_count += 1
+                global_steps += 1
+
+                action = controller_policy.select_action(state, subgoal)
+                
+                state_copy = state.copy()
+                state_copy[:2] = 0
+                constraints = env.get_constraint_values(state_copy)
+                
+                if np.any(state_copy[4:12] > 0):
+                    action = safe_layer.get_safe_action(state_copy, action, constraints)
+                    if np.max(state[4:12]) > 0.9:
+                        potential = utils.calc_potential(state_copy[4:12])
+                        action = np.clip(5 * potential, -10, 10)
+                    
+                new_obs, reward, done, trunc, info = env.step(action)
+                if new_obs['observation'][-1] == 1:
+                    collision_count += 1
+                
+                is_success = info['is_success']
+                if is_success:
+                    env_goals_achieved += 1
+                    goals_achieved += 1
+                    done = True
+
+                goal = new_obs["desired_goal"]
+                new_achieved_goal = new_obs['achieved_goal']
+
+                new_state = new_obs["observation"]
+                
+                inter_temp = False
+                if np.any(new_state[4:12] > 0.80):
+                    inter_temp = True
+                    
+                if inter_temp:
+                    intervene = True
+                elif not inter_temp and intervene_index > 1:
+                    intervene = False
+                    intervene_index = 1
+
+                subgoal = controller_policy.subgoal_transition(achieved_goal, subgoal, new_achieved_goal)
+
+                avg_reward += reward
+                avg_controller_rew += calculate_controller_reward(achieved_goal, subgoal, new_achieved_goal,
+                                                                  ctrl_rew_scale, action)
+                state = new_state
+                achieved_goal = new_achieved_goal
+            output_data['collisions'].append(collision_count)
+            output_data['step_count'].append(step_count)
+            output_data['goal_success'].append(env_goals_achieved)
+
+        avg_reward /= eval_episodes
+        avg_controller_rew /= global_steps
+        avg_step_count = global_steps / eval_episodes
+        avg_env_finish = goals_achieved / eval_episodes
+        avg_collision_count = np.average(output_data['collisions'])
+
+        print("---------------------------------------")
+        print("Evaluation over {} episodes:\nAvg Ctrl Reward: {:.3f}".format(eval_episodes, avg_controller_rew))
+        print("Collisions:\n Avg: {}\n Med: {}\n Max: {}\n Min: {} \n Std Dev: {}".format(
+            avg_collision_count, 
+            np.median(output_data['collisions']),
+            np.max(output_data['collisions']),
+            np.min(output_data['collisions']), 
+            np.std(output_data['collisions'])))
+        print("Goals achieved: {:.1f}%".format(100*avg_env_finish))
+        print("Steps to finish:\n Avg: {}\n Med: {}\n Max: {}\n Min: {} \n Std Dev: {}".format(
+            np.average(output_data['step_count']), 
+            np.median(output_data['step_count']), 
+            np.max(output_data['step_count']),
+            np.min(output_data['step_count']), 
+            np.std(output_data['step_count'])))
+        print("---------------------------------------")
+
+        final_x = new_obs['achieved_goal'][0]
+        final_y = new_obs['achieved_goal'][1]
+
+        final_subgoal_x = subgoal[0]
+        final_subgoal_y = subgoal[1]
+        try:
+            final_z = new_obs['achieved_goal'][2]
+            final_subgoal_z = subgoal[2]
+        except IndexError:
+            final_z = 0
+            final_subgoal_z = 0
+
+        return avg_reward, avg_controller_rew, np.max(output_data['step_count']), avg_env_finish, avg_collision_count, \
+               final_x, final_y, final_z, \
+               final_subgoal_x, final_subgoal_y, final_subgoal_z
 
 
 def run(args):
@@ -34,8 +181,10 @@ def run(args):
     if args.type_of_env == 'small':
         airobjects.spawn_walls(client, -200, 200, -32)
         airobjects.spawn_obstacles(client, -32)
-    elif args.type_of_env == 'large':
+        obstacle_info = air_obstacle_info
+    elif args.type_of_env == 'ansr':
         build_blocks_world(client=client, load=True)
+        obstacle_info = blocks_obstacle_info
     
     env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name), args.type_of_env)
         
@@ -74,7 +223,7 @@ def run(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     file_name = "{}_{}_{}".format(args.env_name, args.algo, args.seed)
-    output_data = {"frames": [], 'training_collisions':[]}
+    output_data = {"frames": [], 'reward':[], 'collisions':[], 'max_steps':[], 'training_collisions':[]}
 
     env.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -95,6 +244,8 @@ def run(args):
                                            reward_scale=args.ctrl_rew_scale)
     manager_buffer = utils.ReplayBuffer(maxsize=args.man_buffer_size)
 
+    safe_layer = SafetyLayer(env, device='cuda', load_ckpt_dir=args.load_safety_dir)
+    
     controller_policy = higl.Controller(
         state_dim=state_dim,
         goal_dim=controller_goal_dim,
@@ -166,9 +317,6 @@ def run(args):
     evaluations = []
     
     # Intervention Variables
-    intervene = False
-    actions_before_intervention = []
-    intervene_index = 1
     train_collisions = 0
 
     ep_obs_seq = None
@@ -189,7 +337,8 @@ def run(args):
         novelty_pq = None
         RND = None
         
-
+    env.evaluate = True
+    start_time = time.time()
     while total_timesteps < args.max_timesteps:
         if done:
             # # Update Novelty Priority Queue
@@ -209,10 +358,33 @@ def run(args):
             if total_timesteps != 0 and not just_loaded:
                 if episode_num % 10 == 0:
                     print("Episode {}, Timesteps {}".format(episode_num, total_timesteps))
-                    output_data["frames"].append(total_timesteps)
+                
+                # Evaluate
+                if timesteps_since_eval >= args.eval_freq:
+                    timesteps_since_eval = 0
+                    avg_ep_rew, avg_controller_rew, max_steps, avg_env_finish, avg_collision_count, \
+                    final_x, final_y, final_z, final_subgoal_x, final_subgoal_y, final_subgoal_z = \
+                        evaluate_policy(env, args.env_name, manager_policy, controller_policy, safe_layer,
+                                        calculate_controller_reward, args.ctrl_rew_scale,
+                                        controller_buffer, obstacle_info,
+                                        args.manager_propose_freq, len(evaluations))
+                    
                     print("Training Collisions:", train_collisions)
                     output_data['training_collisions'].append(train_collisions)
                     train_collisions = 0
+
+                    evaluations.append([avg_ep_rew, avg_controller_rew, max_steps])
+                    output_data["frames"].append(total_timesteps)
+                    output_data["reward"].append(avg_env_finish)
+                    output_data["max_steps"].append(max_steps)
+                    output_data["collisions"].append(avg_collision_count)
+                    
+                    if len(output_data["reward"]) > 1:
+                        if output_data["reward"][-1] == 1 and output_data["reward"][-2] == 1 and \
+                            output_data['max_steps'][-1] <= 350 and output_data['max_steps'][-2] <= 350:
+                                break
+                    
+                    
                     
                 # # Update RND module
                 # if RND is not None:
@@ -238,11 +410,6 @@ def run(args):
             just_loaded = False
             episode_num += 1
 
-            # Intervention Variables
-            intervene = False
-            actions_before_intervention = []
-            intervene_index = 1
-
             subgoal = manager_policy.sample_goal(state, goal)
             timesteps_since_subgoal = 0
             manager_transition = OrderedDict({
@@ -260,15 +427,23 @@ def run(args):
             })
 
         
-        if not intervene:
-            action = controller_policy.select_action(state, subgoal)
-            action = ctrl_noise.perturb_action(action, -max_action, max_action)
-            actions_before_intervention.append(action)
-        else:
-            potential = utils.calc_potential(state[4:12])
-            action = np.clip(10 * potential, -10, 10) 
-            
-            intervene_index = 2
+        policy_action = controller_policy.select_action(state, subgoal)
+        policy_action = ctrl_noise.perturb_action(policy_action, -max_action, max_action)
+        
+        state_copy = state.copy()
+        state_copy[:2] = 0
+        constraints = env.get_constraint_values(state_copy)
+        
+        inter_temp = False
+        backup_action = policy_action
+        # # print(policy_action)
+        if np.any(state_copy[4:12] > 0):
+            backup_action = safe_layer.get_safe_action(state_copy, policy_action, constraints)
+            if np.max(state[4:12]) > 0.9:
+                potential = utils.calc_potential(state_copy[4:12])
+                backup_action = np.clip(10 * potential, -10, 10)
+            inter_temp = True
+        action = policy_action if not inter_temp else backup_action
         action_copy = action.copy()
 
         next_tup, manager_reward, env_done, _, info = env.step(action_copy)
@@ -282,10 +457,6 @@ def run(args):
         next_state = next_tup["observation"]
         collide = next_state[-1]
 
-        # if not collide == 1:
-        #     ep_obs_seq.append(next_state)
-        #     ep_ac_seq.append(next_achieved_goal)
-
         # Append low level sequence for off policy correction
         manager_transition['actions_seq'].append(action)
         manager_transition['state_seq'].append(next_state)
@@ -297,11 +468,6 @@ def run(args):
 
         if collide == 1:
             train_collisions += 1
-        
-        inter_temp = False
-        if np.any(next_state[4:12] > 0.80):
-            controller_reward += -5
-            inter_temp = True
 
         controller_goal = subgoal
         if env_done:
@@ -328,13 +494,6 @@ def run(args):
             'actions_seq': [],
             'achieved_goal_seq': []
         })
-        
-        if inter_temp:
-            intervene = True
-        elif not inter_temp and intervene_index > 1:
-            intervene = False
-            actions_before_intervention = []
-            intervene_index = 1
         
         controller_buffer.add(controller_transition)
 
@@ -380,14 +539,17 @@ def run(args):
                 'achieved_goal_seq': [achieved_goal]
             })
 
+    end_time = time.time()
+    print('LD Collection time:', end_time - start_time)
+    
     if args.save_replay_buffer is not None:
-        manager_buffer.save(args.save_replay_buffer + "_manager")
-        controller_buffer.save(args.save_replay_buffer + "_controller")
-        output_data["frames"].append(total_timesteps)
-        output_data['training_collisions'].append(train_collisions)
-        
+        # manager_buffer.save(args.save_replay_buffer + "_manager")
+        # controller_buffer.save(args.save_replay_buffer + "_controller")
+        pass
+        # output_data["frames"].append(total_timesteps)
+        # output_data['training_collisions'].append(train_collisions)
         output_df = pd.DataFrame(output_data)
-        output_df.to_csv(os.path.join("./navigation/replay_data", file_name+".csv"), float_format="%.4f", index=False)
+        output_df.to_csv(os.path.join("./navigation/replay_data/collect_5.csv"), float_format="%.4f", index=False)
         # np.save(args.save_replay_buffer + 'novelty_pq', novelty_pq.elems)
 
     print("Training finished.")

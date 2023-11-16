@@ -75,7 +75,7 @@ def build_blocks_world(client, load=False):
                 width = float(row[4])
                 height = float(row[5])
                 scale = airsim.Vector3r(width, width, height)
-                if -500 <= float(row[1]) <= 500 and -500 <= float(row[2]) <= 500:
+                if -300 <= float(row[1]) <= 300 and -300 <= float(row[2]) <= 300:
                     obstacle_info.append([float(row[1]), float(row[2]),
                                         float(row[4]), float(row[4])])
                     CylinderName = row[0]                   

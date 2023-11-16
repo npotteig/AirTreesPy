@@ -16,6 +16,7 @@ CUDA_VISIBLE_DEVICES=${GPU} python bt_eval.py \
 --delta 0.5 \
 --adj_factor 0.7 \
 --load \
---load_dir "./navigation/safe_fast/models" \
---load_replay_buffer "./navigation/safe_fast/replay_data/" \
+--load_dir "./navigation/paper_data/safe_layer/run0/models" \
+--load_replay_buffer "./navigation/paper_data/safe_layer/run0/replay_data/" \
+--load_safety_dir "./navigation/safety" \
 --seed ${SEED}

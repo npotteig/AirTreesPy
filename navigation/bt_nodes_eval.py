@@ -133,6 +133,8 @@ class NotSafe(py_trees.behaviour.Behaviour):
         super().__init__(name=name)
         self.blackboard = self.attach_blackboard_client()
         self.blackboard.register_key(key='state', access=py_trees.common.Access.READ)
+        self.blackboard.register_key(key="env", access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="constraints", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key='manager_propose_frequency', access=py_trees.common.Access.READ)
 
     def setup(self):
@@ -142,7 +144,8 @@ class NotSafe(py_trees.behaviour.Behaviour):
         pass
 
     def update(self):
-        if np.any(self.blackboard.state[4:12] > 0.80) :
+        self.blackboard.constraints = self.blackboard.env.get_constraint_values(self.blackboard.state)
+        if np.any(self.blackboard.constraints > 0) :
             new_status = py_trees.common.Status.SUCCESS
         else:
             new_status = py_trees.common.Status.FAILURE
@@ -324,7 +327,7 @@ class move_to(py_trees.behaviour.Behaviour):
 
 class safe_move_to(py_trees.behaviour.Behaviour):
     
-    def __init__(self, controller_policy, calculate_controller_reward, ctrl_rew_scale, name: str = "SafeMoveToSubGoal!"):
+    def __init__(self, controller_policy, safe_layer, calculate_controller_reward, ctrl_rew_scale, name: str = "SafeMoveToSubGoal!"):
         super().__init__(name=name)
         self.blackboard = self.attach_blackboard_client()
         self.blackboard.register_key(key='subgoal', access=py_trees.common.Access.WRITE)
@@ -336,6 +339,7 @@ class safe_move_to(py_trees.behaviour.Behaviour):
         self.blackboard.register_key(key='success', access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="reward", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key="sg_move_count", access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="constraints", access=py_trees.common.Access.WRITE)
 
         # Evaluation Metrics
         self.blackboard.register_key(key="avg_reward", access=py_trees.common.Access.WRITE)
@@ -346,6 +350,7 @@ class safe_move_to(py_trees.behaviour.Behaviour):
         self.blackboard.register_key(key="evaluation", access=py_trees.common.Access.WRITE)
 
         self.controller_policy = controller_policy
+        self.safe_layer = safe_layer
         self.calculate_controller_reward = calculate_controller_reward
         self.ctrl_rew_scale = ctrl_rew_scale
 
@@ -356,33 +361,38 @@ class safe_move_to(py_trees.behaviour.Behaviour):
         pass
 
     def update(self):
-        if (self.blackboard.sg_move_count % (self.blackboard.manager_propose_frequency + 1) == 0) :
-            new_status = py_trees.common.Status.SUCCESS
-        else:
+        # print('Got Here')
+        # if (self.blackboard.sg_move_count % (self.blackboard.manager_propose_frequency + 1) == 0) :
+        #     new_status = py_trees.common.Status.SUCCESS
+        # else:
+        # constraints = self.blackboard.env.get_constraint_values(self.blackboard.state)
+        policy_action = self.controller_policy.select_action(self.blackboard.state, self.blackboard.subgoal)
+        action = self.safe_layer.get_safe_action(self.blackboard.state, policy_action, self.blackboard.constraints)
+        if np.max(self.blackboard.state[4:12]) > 0.9:
             potential = utils.calc_potential(self.blackboard.state[4:12])
-            action = np.clip(5 * potential, -5, 5)
-            new_obs, self.blackboard.reward, done, _, info = self.blackboard.env.step(action)
-            self.blackboard.success = info['is_success'] or done
-                
-            if new_obs['observation'][-1] == 1:
-                self.blackboard.collision_count += 1
+            action = np.clip(5 * potential, -10, 10)
+        new_obs, self.blackboard.reward, done, _, info = self.blackboard.env.step(action)
+        self.blackboard.success = info['is_success'] or done
+            
+        if new_obs['observation'][-1] == 1:
+            self.blackboard.collision_count += 1
 
-            self.blackboard.goal = new_obs["desired_goal"]
-            new_achieved_goal = new_obs['achieved_goal']
-            new_state = new_obs["observation"]
-            self.blackboard.subgoal = self.controller_policy.subgoal_transition(self.blackboard.achieved_goal, self.blackboard.subgoal, new_achieved_goal)
+        self.blackboard.goal = new_obs["desired_goal"]
+        new_achieved_goal = new_obs['achieved_goal']
+        new_state = new_obs["observation"]
+        self.blackboard.subgoal = self.controller_policy.subgoal_transition(self.blackboard.achieved_goal, self.blackboard.subgoal, new_achieved_goal)
 
-            self.blackboard.avg_reward += self.blackboard.reward
-            self.ccr = self.calculate_controller_reward(self.blackboard.achieved_goal, self.blackboard.subgoal, new_achieved_goal, self.ctrl_rew_scale)
-            self.blackboard.avg_controller_rew += self.ccr
+        self.blackboard.avg_reward += self.blackboard.reward
+        self.ccr = self.calculate_controller_reward(self.blackboard.achieved_goal, self.blackboard.subgoal, new_achieved_goal, self.ctrl_rew_scale)
+        self.blackboard.avg_controller_rew += self.ccr
 
-            self.blackboard.global_steps += 1
-            self.blackboard.step_count += 1
-            self.blackboard.sg_move_count += 1
-            self.blackboard.state = new_state
-            self.blackboard.achieved_goal = new_achieved_goal
+        self.blackboard.global_steps += 1
+        self.blackboard.step_count += 1
+        self.blackboard.sg_move_count += 1
+        self.blackboard.state = new_state
+        self.blackboard.achieved_goal = new_achieved_goal
 
-            new_status = py_trees.common.Status.RUNNING
+        new_status = py_trees.common.Status.RUNNING
         return new_status
 
     def terminate(self, new_status):

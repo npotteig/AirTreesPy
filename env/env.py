@@ -3,35 +3,47 @@ import numpy as np
 import airmap.airmap_objects as airobjects
 import airmap.blocks_tree_generator as blocks_gen
 import time
+import airsim
 
 class AirWrapperEnv():
-    def __init__(self, base_env, type_of_env):
+    def __init__(self, base_env):
         self.evaluate = False
+        self.multi_goal = False
         self.base_env = base_env
+        self.obs_info = self.base_env.obs_info
         self.goal_dim = self.base_env.unwrapped.goal_dim
         self.reset_count = 0
-        self.obs_info = blocks_gen.obstacle_info if type_of_env == "ansr" else airobjects.obstacle_info
-        self.goal_list = np.array([[10, 10], [10, -10], [-10, -10], [-10, 10]])
+        self.goal_list = np.array([[8, 8], [8, -8], [-8, -8], [-8, 8],
+                                   [8, 0], [-8, 0], [0, 8], [0, -8]])
+    
+    def set_init_pos(self, pos):
+        self.base_env.init_pos = pos
         
     def reset(self):
         self.count = 0
-        if self.evaluate:
-            self.desired_goal = self.goal_list[self.reset_count]
-        else:
-            valid_goal = False
-            while not valid_goal:
-                self.desired_goal = np.random.uniform((-10, -10), (10, 10))
-                test_goal = (self.desired_goal * 10).tolist()
-                for obstacle in self.obs_info:
-                    valid_goal = not airobjects.inside_object(test_goal, obstacle)
-                    if not valid_goal:
-                        break
-        self.prev_goal = np.array([0., 0.])
-        self.cur_goal = self.desired_goal
+        self.locked = False
+        self.prev_max = 0
+        if not self.multi_goal:
+            if self.evaluate:
+                self.desired_goal = np.array([6.5, 8])
+                # self.reset_count = 3
+                # self.desired_goal = self.goal_list[self.reset_count]
+            else:
+                valid_goal = False
+                while not valid_goal:
+                    self.desired_goal = np.random.uniform((-10, -10), (10, 10))
+                    test_goal = (self.desired_goal * 10).tolist()
+                    for obstacle in self.obs_info:
+                        valid_goal = not airobjects.inside_object(test_goal, obstacle)
+                        if not valid_goal:
+                            break
+        
+        self.prev_goal = self.base_env.init_pos
+        self.cur_goal = self.base_env.init_pos
         obs, info = self.base_env.reset()
         obs[:self.goal_dim] /= 10
         self.reset_count += 1
-        self.reset_count %= 4
+        self.reset_count %= 8
         
         next_obs = {
             'observation': obs.copy(),
@@ -54,7 +66,7 @@ class AirWrapperEnv():
         rew += self._get_reward(obs) 
         info['is_success'] = rew > -0.5
         
-        return next_obs, rew, done or self.count >= 500, trunc, info
+        return next_obs, rew, done or self.count >= 2000, trunc, info
     
     def change_goal(self, new_goal):
         self.prev_goal = self.cur_goal
@@ -67,6 +79,32 @@ class AirWrapperEnv():
     def _get_reward(self, obs):
         return -np.linalg.norm(obs[:self.goal_dim] - self.desired_goal)
     
+    def get_num_constraints(self):
+        return 8
+
+    def get_constraint_values(self, state):
+        # print(self.locked)
+        temp_thresh = np.clip(1 - np.linalg.norm(state[2:4]) / 10, 0, 0.9)
+        norm = np.linalg.norm(state[2:4])
+        # self.locked = False
+        if not self.locked:
+            self.thresh = temp_thresh
+            constr_val = np.array(state[4:12] - self.thresh)
+            if np.any(constr_val > 0):
+                self.prev_max = np.max(constr_val)
+                self.locked = True
+        else:
+            # temp_const = np.array(state[4:12] - temp_thresh)
+            constr_val = np.array(state[4:12] - self.thresh)
+            cur_max = np.max(constr_val)
+            if cur_max < self.prev_max:
+                self.locked = False
+            if np.max(state[4:12]) < 0.9:
+                self.prev_max = cur_max
+        
+        
+        return constr_val
+    
     @property
     def action_space(self):
         return self.base_env.action_space
@@ -77,10 +115,19 @@ class AirWrapperEnv():
         
 
 class AirSimEnv(gym.Env):
-    def __init__(self, client, dt, vehicle_name="Drone1") -> None:
+    def __init__(self, client, dt, vehicle_name="Drone1", randomize_start=False, type_of_env="small") -> None:
         self.client = client
         self.dt = dt
         self.vehicle_name = vehicle_name
+        self.randomize_start = randomize_start
+        self.obs_info = blocks_gen.obstacle_info if type_of_env == "ansr" else airobjects.obstacle_info
+        self.init_pos = np.array([0, 0])
+        
+        
+        if type_of_env == "small":
+            self.z = -30
+        else:
+            self.z = -15
         
         self.goal_dim = 2
         self._sensor_range = 20
@@ -89,13 +136,28 @@ class AirSimEnv(gym.Env):
         self.action_space = gym.spaces.Box(-10, 10, shape=(2,), dtype=float)
     
     def reset(self, seed=None, options=None):
+        self.client.simPause(False)
         self.client.reset()
         self.client.enableApiControl(True, self.vehicle_name)
         self.client.armDisarm(True, self.vehicle_name)
         self.client.takeoffAsync(vehicle_name=self.vehicle_name).join()
         
         # Fixed Z Altitude
-        self.client.moveToZAsync(-15, velocity=15, vehicle_name=self.vehicle_name).join()
+        self.client.moveToZAsync(self.z, velocity=20, vehicle_name=self.vehicle_name).join()
+        if not np.all(self.init_pos == 0):
+            self.client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(self.init_pos[0], self.init_pos[1], self.z), airsim.to_quaternion(0, 0, 0)), True) 
+        
+        if self.randomize_start:
+            valid_goal = False
+            while not valid_goal:
+                pos = np.random.uniform((-90, -90), (90, 90))
+                test_goal = (pos).tolist()
+                for obstacle in self.obs_info:
+                    valid_goal = not airobjects.inside_object(test_goal, obstacle, buf=5)
+                    if not valid_goal:
+                        break
+            self.client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(pos[0], pos[1], self.z), airsim.to_quaternion(0, 0, 0)), True) 
+        self.client.simPause(True)
         
         obs = self._get_obs()
         
@@ -106,10 +168,14 @@ class AirSimEnv(gym.Env):
         #                             float(action[1]), 
         #                             0, 
         #                             duration=self.dt).join()
+        self.client.simPause(False)
         self.client.moveByVelocityZAsync(float(action[0]), 
                                     float(action[1]), 
-                                    -15, 
+                                    self.z,
+                                    yaw_mode={'is_rate':False, 'yaw_or_rate':0},
                                     duration=self.dt).join()
+        self.client.simPause(True)
+        # self.client.simContinueForTime(self.dt)
         obs = self._get_obs()
         
         return obs, 0, False, False, {}
@@ -131,6 +197,7 @@ class AirSimEnv(gym.Env):
             if dst <= self._sensor_range:
                 sens_reads[i] = (self._sensor_range - dst) / self._sensor_range
         sens_reads[-1] = float(self.client.simGetCollisionInfo(self.vehicle_name).has_collided)
+        # sens_reads[-1] = np.any(sens_reads[:8] > 0.97)
         return sens_reads
     
     def seed(self, sd):

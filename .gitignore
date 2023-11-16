@@ -3,3 +3,7 @@ models*
 replay_data*
 results*
 logs*
+*.npz
+*.csv
+*.pkl
+*.pth

@@ -98,6 +98,8 @@ parser.add_argument("--load_algo", type=str)
 parser.add_argument("--log_dir", default="./logs", type=str)
 parser.add_argument("--load_replay_buffer", type=str)
 parser.add_argument("--load_adj_net", default=False, action="store_true")
+parser.add_argument("--load_safety_dir", required=True, type=str)
+
 
 parser.add_argument("--version", type=str, default='v0')
 

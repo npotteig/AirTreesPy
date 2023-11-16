@@ -5,7 +5,9 @@ import torch.utils.data as Data
 
 import numpy as np
 import pandas as pd
+import pickle
 
+from collections import deque
 import random
 
 from functools import total_ordering
@@ -24,7 +26,7 @@ def calc_potential(sensor_info):
     # Order of the Distance Sensors relevant to angle
     magnitudes = [0, 1, 7, 2, 6, 3, 5, 4]
     resultant_x = sensor_info[0] * math.cos(math.radians(magnitudes[0] * 45))
-    resultant_y = sensor_info[1] * math.cos(math.radians(magnitudes[0] * 45))
+    resultant_y = sensor_info[1] * math.sin(math.radians(magnitudes[0] * 45))
     
     for i in range(1, 8):
         angle = math.radians(magnitudes[i] * 45)
@@ -39,6 +41,50 @@ def calc_potential(sensor_info):
     res_array = np.array([resultant_x, resultant_y])
     
     return -res_array 
+
+class SafetyMemory:
+    def __init__(self, max_size):
+        self.max_size = max_size
+        self.buffer = deque(maxlen=max_size)
+
+    def push(self, state, action, constraints, next_constraints):
+        experience = (state, action, constraints, next_constraints)
+        self.buffer.append(experience)
+
+    def sample(self, batch_size):
+        state_batch, action_batch, constraints_batch, next_constraints_batch = [], [], [], []
+
+        batch = random.sample(self.buffer, batch_size)
+
+        for state, action, constraints, next_constraints in batch:
+            state_batch.append(state)
+            action_batch.append(action)
+            constraints_batch.append(constraints)
+            next_constraints_batch.append(next_constraints)
+
+        return np.array(state_batch), \
+                np.array(action_batch), \
+                np.array(constraints_batch), \
+                np.array(next_constraints_batch)
+
+    def __len__(self):
+        return len(self.buffer)
+
+    def sample_batch_by_index(self, indices):
+        state_batch, action_batch, constraints_batch, next_constraints_batch = [], [], [], []
+        for i in indices:
+            state, action, constraints, next_constraints = self.buffer[i]
+            state_batch.append(state)
+            action_batch.append(action)
+            constraints_batch.append(constraints)
+            next_constraints_batch.append(next_constraints)
+        return state_batch, action_batch, constraints_batch, next_constraints_batch
+
+    def save(self, filename):
+        pickle.dump(self.buffer, open(filename, 'wb'))
+    
+    def load(self, filename):
+        self.buffer = pickle.load(open(filename, 'rb'))
 
 
 # Simple replay buffer

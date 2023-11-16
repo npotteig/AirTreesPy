@@ -1,7 +1,35 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from functional import seq
 
+class Net(nn.Module):
+    def __init__(self, input_size, layer_dims, output_size, last_activation):
+        super(Net, self).__init__()
+
+        self.last_activation = last_activation
+
+        layerdims = [input_size] + layer_dims + [output_size]
+        self.layers = nn.ModuleList(seq(layerdims[:-1])
+                                    .zip(layerdims[1:])
+                                    .map(lambda dims: nn.Linear(dims[0], dims[1]))
+                                    .to_list())
+
+    def forward(self, inp):
+        out = inp
+        out = F.relu(self.layers[0](out))
+        for layer in self.layers[1:-1]:
+            out = F.relu(layer(out))
+        if self.last_activation:
+            out = self.last_activation(self.layers[-1](out))
+        else:
+            out = self.layers[-1](out)
+        return out
+
+class ConstraintModel(Net):
+    def __init__(self, input_size, output_size):
+        super(ConstraintModel, self).__init__(
+            input_size, [64, 64], output_size, None)
 
 class Actor(nn.Module):
     def __init__(self, state_dim, goal_dim, action_dim, max_action):

@@ -4,6 +4,7 @@ import numpy as np
 
 import higl.utils as utils
 import higl.higl as higl
+from higl.safety_layer import SafetyLayer
 
 import airsim
 import math
@@ -13,28 +14,31 @@ import pandas as pd
 import gymnasium as gym
 from env import *
 
+import time
+
 from env.env import AirWrapperEnv
 
 import airmap.airmap_objects as airobjects
 from airmap.blocks_tree_generator import build_blocks_world
-# from airmap.blocks_tree_generator import obstacle_info
-from airmap.airmap_objects import obstacle_info
+from airmap.blocks_tree_generator import obstacle_info as blocks_obstacle_info
+from airmap.airmap_objects import obstacle_info as air_obstacle_info
 
 
 def evaluate_policy(env,
                     env_name,
                     manager_policy,
                     controller_policy,
+                    safelayer,
                     calculate_controller_reward,
                     ctrl_rew_scale,
                     controller_replay_buffer,
-                    novelty_pq,
+                    obstacle_info,
                     manager_propose_frequency=10,
-                    eval_episodes=100,
+                    eval_episodes=5,
                     ):
     env.evaluate = True
     prefix = ""
-    file_name = prefix + "_evaluation"
+    file_name = prefix + "evaluation_ansr_fps_lds_transfer_2"
     output_data = {"goal_success": [], "step_count": [], "collisions": []}
 
     with torch.no_grad():
@@ -42,36 +46,42 @@ def evaluate_policy(env,
         avg_controller_rew = 0.
         global_steps = 0
         goals_achieved = 0
-
+        
+        start_time = time.time()
         for eval_ep in range(eval_episodes):
             print(eval_ep)
             obs, _ = env.reset()
-
-            goal = obs["desired_goal"]
+            env.multi_goal = True
+            goal_changes = np.array([[8, -1], [10.5, 7], [14, 16]])
+            goal_changes_idx = 0
+            env.change_goal(goal_changes[goal_changes_idx])
+            
+            # goal = obs["desired_goal"]
+            goal = goal_changes[goal_changes_idx]
+            
             achieved_goal = obs["achieved_goal"]
             state = obs["observation"]
             manager_policy.init_planner()
-            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, step_size=2, obstacle_info=obstacle_info)
-            select_goal_idx = np.random.randint(0, 101)
+            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, start=env.prev_goal, step_size=2, obstacle_info=obstacle_info)
+
+            # select_goal_idx = np.random.randint(0, 101)
             # Problem graph is built off of the goal chosen
             # env.desired_goal = manager_policy.planner.landmarks_cov_nov_fg[select_goal_idx].cpu().numpy()
             # goal = env.desired_goal
             ld = achieved_goal
             ld_idx = None
             cur_ld = 0
+            # print(goal)
             
             done = False
             step_count = 0
             env_goals_achieved = 0
             collision_count = 0
             
-            intervene = False
-            intervene_index = 1
-            
             # goal_changes = np.array([[20, 20], [30, 30], [40, 40]])
-            # goal_changes_idx = 0
+            
             while not done:
-                # if goal_changes_idx < 50 and -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0 :
+                if goal_changes_idx < len(goal_changes) - 1 and -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0 :
                 #     potential_goal = env.cur_goal + 10
                 #     pot_goal_10 = (potential_goal * 10).tolist()
                 #     valid_goal = False
@@ -87,14 +97,14 @@ def evaluate_policy(env,
                 #             if not valid_goal:
                 #                 break
                     
-                #     env.change_goal(potential_goal)
-                #     goal_changes_idx += 1
-                #     ld = np.array([0, 0])
-                #     cur_ld = 0
-                #     ld_idx = None
-                #     print(potential_goal)
+                    goal_changes_idx += 1
+                    env.change_goal(goal_changes[goal_changes_idx])
+                    ld = np.array([0, 0])
+                    cur_ld = 0
+                    ld_idx = None
+                    print(env.cur_goal)
                     
-                #     manager_policy.planner.eval_build_landmark_graph(env.desired_goal, controller_policy, controller_replay_buffer, start=env.prev_goal, step_size=2, obstacle_info=obstacle_info)
+                    manager_policy.planner.eval_build_landmark_graph(env.desired_goal, controller_policy, controller_replay_buffer, start=env.prev_goal, step_size=2, obstacle_info=obstacle_info)
                 if -np.linalg.norm(ld - achieved_goal, axis=-1) > -1.0 or step_count == 0:    
                     if -np.linalg.norm(goal - achieved_goal, axis=-1) <= -1.5:
                         cur_ld += 1
@@ -107,26 +117,32 @@ def evaluate_policy(env,
                 
                 if step_count % manager_propose_frequency == 0:
                     subgoal = manager_policy.sample_goal(state, ld)
-                    # if np.any(state[4:12] > 0.80):
-                    #     potential = utils.calc_potential(state[4:12])
-                    #     subgoal += 1.0*potential
 
 
                 step_count += 1
                 global_steps += 1
+
                 if np.all(state[4:] == 0):
                     disp = ld - state[:2]
                     dist = np.linalg.norm(disp)
                     unit_vec = disp / dist
-                    action = 15 * unit_vec
-                elif not intervene:
-                    action = controller_policy.select_action(state, subgoal)
-                else:
-                    potential = utils.calc_potential(state[4:12])
-                    action = np.clip(10 * potential, -10, 10)
-                    intervene_index = 2                 
-                    
+                    policy_action = 15 * unit_vec
+                else :
+                    policy_action = controller_policy.select_action(state, subgoal)
+                
+                state_copy = state.copy()
+                state_copy[:2] = 0
+                constraints = env.get_constraint_values(state_copy)
+                
 
+                if np.any(state[4:12] > 0):
+                    action = safelayer.get_safe_action(state_copy, policy_action, constraints)
+                    if np.max(state[4:12]) > 0.9:
+                        potential = utils.calc_potential(state_copy[4:12])
+                        action = np.clip(5 * potential, -10, 10)
+                else:
+                    action = policy_action     
+                    
                 new_obs, reward, done, trunc, info = env.step(action)
                 if new_obs['observation'][-1] == 1:
                     collision_count += 1
@@ -136,25 +152,12 @@ def evaluate_policy(env,
                     env_goals_achieved += 1
                     goals_achieved += 1
                     done = True
-                    print('Success')
 
                 goal = new_obs["desired_goal"]
                 new_achieved_goal = new_obs['achieved_goal']
 
                 new_state = new_obs["observation"]
-                # print(new_state[:2])
-                
-                inter_temp = False
-                # print(new_state[4:12])
-                if np.any(new_state[4:12] > 0.80):
-                    inter_temp = True
-                    
-                if inter_temp:
-                    intervene = True
-                elif not inter_temp and intervene_index > 1:
-                    intervene = False
-                    intervene_index = 1
-
+            
                 subgoal = controller_policy.subgoal_transition(achieved_goal, subgoal, new_achieved_goal)
 
                 avg_reward += reward
@@ -165,7 +168,8 @@ def evaluate_policy(env,
             output_data['collisions'].append(collision_count)
             output_data['step_count'].append(step_count)
             output_data['goal_success'].append(env_goals_achieved)
-
+            
+        print(time.time() - start_time)
         avg_reward /= eval_episodes
         avg_controller_rew /= global_steps
         avg_step_count = global_steps / eval_episodes
@@ -202,8 +206,8 @@ def evaluate_policy(env,
             final_z = 0
             final_subgoal_z = 0
 
-        output_df = pd.DataFrame(output_data)
-        output_df.to_csv(os.path.join("./navigation/safe_fast/results/results_"+ file_name + ".csv"), float_format="%.4f", index=False)
+        # output_df = pd.DataFrame(output_data)
+        # output_df.to_csv(os.path.join("./navigation/paper_data/eval_results/"+ file_name + ".csv"), float_format="%.4f", index=False)
 
         return avg_reward, avg_controller_rew, avg_step_count, avg_env_finish, \
                final_x, final_y, final_z, \
@@ -217,12 +221,14 @@ def run(args):
     client.confirmConnection()
     if args.type_of_env == "small":
         airobjects.destroy_objects(client)
-        airobjects.spawn_walls(client, -200, 200, -17)
-        airobjects.spawn_obstacles(client, -17)
+        airobjects.spawn_walls(client, -200, 200, -32)
+        airobjects.spawn_obstacles(client, -32)
+        obstacle_info = air_obstacle_info
     else:
         build_blocks_world(client=client, load=True)
+        obstacle_info = blocks_obstacle_info
     
-    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name), args.type_of_env)
+    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env))
 
     max_action = float(env.action_space.high[0])
 
@@ -273,6 +279,8 @@ def run(args):
                                            reward_func=calculate_controller_reward,
                                            reward_scale=args.ctrl_rew_scale)
     manager_buffer = utils.ReplayBuffer(maxsize=args.man_buffer_size)
+    
+    safe_layer = SafetyLayer(env, device='cuda', load_ckpt_dir=args.load_safety_dir)
 
     controller_policy = higl.Controller(
         state_dim=state_dim,
@@ -349,5 +357,5 @@ def run(args):
     # Final evaluation
     avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, \
     final_x, final_y, final_z, final_subgoal_x, final_subgoal_y, final_subgoal_z = \
-        evaluate_policy(env, args.env_name, manager_policy, controller_policy, calculate_controller_reward,
-                        args.ctrl_rew_scale, controller_buffer, novelty_pq, args.manager_propose_freq)
+        evaluate_policy(env, args.env_name, manager_policy, controller_policy, safe_layer, calculate_controller_reward,
+                        args.ctrl_rew_scale, controller_buffer, obstacle_info, args.manager_propose_freq)
