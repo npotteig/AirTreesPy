@@ -17,7 +17,7 @@ class AirWrapperEnv():
                                    [8, 0], [-8, 0], [0, 8], [0, -8]])
     
     def set_init_pos(self, pos):
-        self.base_env.init_pos = pos
+        self.base_env.set_init_pos(pos * 10)
         
     def reset(self):
         self.count = 0
@@ -37,9 +37,8 @@ class AirWrapperEnv():
                         valid_goal = not airobjects.inside_object(test_goal, obstacle)
                         if not valid_goal:
                             break
-        
-        self.prev_goal = self.base_env.init_pos
-        self.cur_goal = self.base_env.init_pos
+        self.prev_goal = self.base_env.init_pos / 10
+        self.cur_goal = self.base_env.init_pos / 10
         obs, info = self.base_env.reset()
         obs[:self.goal_dim] /= 10
         self.reset_count += 1
@@ -135,6 +134,9 @@ class AirSimEnv(gym.Env):
         self.observation_space = gym.spaces.Box(-200, 200, shape=(13,), dtype=float)
         self.action_space = gym.spaces.Box(-10, 10, shape=(2,), dtype=float)
     
+    def set_init_pos(self, pos):
+        self.init_pos = pos
+    
     def reset(self, seed=None, options=None):
         self.client.simPause(False)
         self.client.reset()
@@ -144,8 +146,8 @@ class AirSimEnv(gym.Env):
         
         # Fixed Z Altitude
         self.client.moveToZAsync(self.z, velocity=20, vehicle_name=self.vehicle_name).join()
-        if not np.all(self.init_pos == 0):
-            self.client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(self.init_pos[0], self.init_pos[1], self.z), airsim.to_quaternion(0, 0, 0)), True) 
+        if np.any(self.init_pos != 0):
+            self.client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(float(self.init_pos[0]), float(self.init_pos[1]), self.z), airsim.to_quaternion(0, 0, 0)), True) 
         
         if self.randomize_start:
             valid_goal = False

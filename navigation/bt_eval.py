@@ -234,6 +234,7 @@ def evaluate_policy(root,
                     eval_episodes=5,
                     ):
     blackboard.env.evaluate = True
+    blackboard.env.multi_goal = True
     file_name = "bt_eval_gp"
     output_data = {"goal_success": [], "step_count": [], "collisions": []}
 
@@ -245,6 +246,7 @@ def evaluate_policy(root,
 
         for eval_ep in range(eval_episodes):
             print(eval_ep)
+            blackboard.env.set_init_pos(np.array([5, 5]))
             obs, _ = blackboard.env.reset()
             # blackboard.env.desired_goal = np.array([0, 0])
             # blackboard.env.cur_goal = np.array([0, 0])
@@ -303,8 +305,8 @@ def evaluate_policy(root,
 
         blackboard.env.evaluate = False
 
-        output_df = pd.DataFrame(output_data)
-        output_df.to_csv(os.path.join("./navigation/bt_comparison/"+ file_name + ".csv"), float_format="%.4f", index=False)
+        # output_df = pd.DataFrame(output_data)
+        # output_df.to_csv(os.path.join("./navigation/bt_comparison/"+ file_name + ".csv"), float_format="%.4f", index=False)
 
         return avg_reward, avg_controller_rew, avg_step_count, avg_env_finish
 

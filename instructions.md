@@ -22,7 +22,7 @@ unzip safe_fast.zip
 
 Navigate back to root folder and execute the following script with the Blocks environment running.
 ```shell
-./scripts/bt_eval_airnav.sh ansr grid expert 0 2
+./scripts/bt_eval_airnav.sh ansr grid goal_change_expert 0 2
 ```
 
 Relevant Files to Look at:  
