@@ -291,6 +291,8 @@ class move_to(py_trees.behaviour.Behaviour):
         if (self.blackboard.sg_move_count % (self.blackboard.manager_propose_frequency + 1) == 0) :
             new_status = py_trees.common.Status.SUCCESS
         else:
+            # Added to speed up drone navigation if drone is not near obstacles
+            # This can be commented out to replicate original paper results 
             if np.all(self.blackboard.state[4:] == 0):
                 disp = self.blackboard.landmark - self.blackboard.state[:2]
                 dist = np.linalg.norm(disp)
