@@ -1,6 +1,7 @@
 import airsim
 import pandas as pd
 import os
+import torch
 
 import gymnasium as gym
 from env import *
@@ -12,15 +13,18 @@ from env.env import AirWrapperEnv
 import airmap.airmap_objects as airobjects
 from airmap.blocks_tree_generator import build_blocks_world
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(device)
+
 def run(args):
     if not os.path.exists("./navigation/safety"):
         os.makedirs("./navigation/safety")
     
     if args.load_buffer:
         if args.load_models:
-            safelayer = SafetyLayer(device="cuda", load_buffer=args.load_replay_buffer, load_ckpt_dir=args.load_models_dir)
+            safelayer = SafetyLayer(device=device, load_buffer=args.load_replay_buffer, load_ckpt_dir=args.load_models_dir)
         else:
-            safelayer = SafetyLayer(device="cuda", load_buffer=args.load_replay_buffer, load_ckpt_dir=args.load_models_dir)
+            safelayer = SafetyLayer(device=device, load_buffer=args.load_replay_buffer, load_ckpt_dir=args.load_models_dir)
     else:
         dt = 0.1 
         vehicle_name = "Drone1"
@@ -37,9 +41,9 @@ def run(args):
         env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env))
         
         if args.load_models:
-            safelayer = SafetyLayer(env, device="cuda", load_ckpt_dir=args.load_models_dir)
+            safelayer = SafetyLayer(env, device=device, load_ckpt_dir=args.load_models_dir)
         else:
-            safelayer = SafetyLayer(env, device="cuda", load_ckpt_dir=args.load_models_dir)
+            safelayer = SafetyLayer(env, device=device, load_ckpt_dir=args.load_models_dir)
     safelayer.train(batch_size=args.batch_size, lr=args.lr, sample_data_episodes=args.sample_data_episodes,
                     buffer_size=args.buffer_size, epochs=args.epochs, train_per_epoch=args.training_steps_per_epoch,
                     eval_per_epoch=args.evaluation_steps_per_epoch)

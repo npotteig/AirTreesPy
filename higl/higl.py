@@ -10,7 +10,6 @@ from planner.goal_plan import Planner as BasePlanner
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 def var(tensor):
     return tensor.to(device)
 

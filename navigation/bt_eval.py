@@ -247,7 +247,7 @@ def evaluate_policy(root,
             print(eval_ep)
             
             # Set Initial Position for Drone before env.reset
-            blackboard.env.set_init_pos(np.array([5, 5]))
+            blackboard.env.set_init_pos(np.array([0, 0]))
             
             obs, _ = blackboard.env.reset()
             # blackboard.env.desired_goal = np.array([0, 0])

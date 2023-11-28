@@ -20,6 +20,13 @@ Scripts are compatible with using pretrained weights. If you want to use your mo
 unzip pretrained.zip
 ```
 
+## Training Safety Layer
+The safety layer is trained to predict constraint violations and perturb actions to mitigate safety violaions. To train safety layer for use in training the HRL policies execute the following script.
+
+```shell
+./scripts/safety_airnav.sh
+```
+
 ## Training in Small AirSim Environment
 The small AirSim Environment is used to train RL policies from scratch that can then be transferred to other complex AirSim environments. The small environment consists of a 200x200 meter, where the drone spawns in the center. The boundary is outlined by a wall and the interior consists of obstacles (rectangular blocks).
 

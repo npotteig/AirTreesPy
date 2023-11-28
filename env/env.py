@@ -9,7 +9,7 @@ class AirWrapperEnv():
     def __init__(self, base_env):
         self.evaluate = False
         self.base_env = base_env
-        self.obs_info = self.base_env.obs_info
+        self.obs_info = self.base_env.unwrapped.obs_info
         self.goal_dim = self.base_env.unwrapped.goal_dim
         self.reset_count = 0
         self.goal_list = np.array([[8, 8], [8, -8], [-8, -8], [-8, 8],
@@ -35,8 +35,8 @@ class AirWrapperEnv():
                     valid_goal = not airobjects.inside_object(test_goal, obstacle)
                     if not valid_goal:
                         break
-        self.prev_goal = self.base_env.init_pos / 10
-        self.cur_goal = self.base_env.init_pos / 10
+        self.prev_goal = self.base_env.unwrapped.init_pos / 10
+        self.cur_goal = self.base_env.unwrapped.init_pos / 10
         obs, info = self.base_env.reset()
         obs[:self.goal_dim] /= 10
         self.reset_count += 1
@@ -63,7 +63,7 @@ class AirWrapperEnv():
         rew += self._get_reward(obs) 
         info['is_success'] = rew > -0.5
         
-        return next_obs, rew, done or self.count >= 2000, trunc, info
+        return next_obs, rew, done or self.count >= 500, trunc, info
     
     def change_goal(self, new_goal):
         self.prev_goal = self.cur_goal
