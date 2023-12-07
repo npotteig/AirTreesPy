@@ -28,7 +28,7 @@ def spawn_walls(client, low, high, z_val):
     pos4 = airsim.Vector3r(0, low, z_val)
     pose4 = airsim.Pose(position_val=pos4)
     
-    z_size_adj = 10
+    z_size_adj = 30
     scaleY = airsim.Vector3r(1, int(high-low), z_size_adj)
     scaleX = airsim.Vector3r(int(high-low), 1, z_size_adj)
     client.simSpawnObject('my_cube1', 'Cube', pose1, scaleY)
@@ -55,7 +55,7 @@ def destroy_objects(client):
     
 
 def spawn_obstacles(client, z_val):
-    z_size_adj = 10
+    z_size_adj = 30
     
     for i in range(len(obstacle_info)):
         obs_info = obstacle_info[i]

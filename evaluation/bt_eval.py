@@ -21,7 +21,7 @@ import airmap.airmap_objects as airobjects
 from airmap.blocks_tree_generator import build_blocks_world
 from airmap.blocks_tree_generator import obstacle_info
 
-import navigation.bt_nodes_eval as bt_nodes
+import evaluation.bt_nodes_eval as bt_nodes
 import py_trees
 
 import time

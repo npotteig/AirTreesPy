@@ -1,9 +1,11 @@
 import gymnasium as gym
 import numpy as np
-import airmap.airmap_objects as airobjects
-import airmap.blocks_tree_generator as blocks_gen
+import shared.map.airmap_objects as airobjects
+import shared.map.blocks_tree_generator as blocks_gen
 import time
 import airsim
+import math
+from shared.higl.utils import sens_rel_to_global
 
 class AirWrapperEnv():
     def __init__(self, base_env):
@@ -12,6 +14,8 @@ class AirWrapperEnv():
         self.obs_info = self.base_env.unwrapped.obs_info
         self.goal_dim = self.base_env.unwrapped.goal_dim
         self.reset_count = 0
+        self.sens_idx = 4
+        self.num_sensors = 8
         self.goal_list = np.array([[8, 8], [8, -8], [-8, -8], [-8, 8],
                                    [8, 0], [-8, 0], [0, 8], [0, -8]])
     
@@ -86,17 +90,17 @@ class AirWrapperEnv():
         # self.locked = False
         if not self.locked:
             self.thresh = temp_thresh
-            constr_val = np.array(state[4:12] - self.thresh)
+            constr_val = np.array(state[self.sens_idx:self.sens_idx+self.num_sensors] - self.thresh)
             if np.any(constr_val > 0):
                 self.prev_max = np.max(constr_val)
                 self.locked = True
         else:
             # temp_const = np.array(state[4:12] - temp_thresh)
-            constr_val = np.array(state[4:12] - self.thresh)
+            constr_val = np.array(state[self.sens_idx:self.sens_idx+self.num_sensors] - self.thresh)
             cur_max = np.max(constr_val)
             if cur_max < self.prev_max:
                 self.locked = False
-            if np.max(state[4:12]) < 0.9:
+            if np.max(state[self.sens_idx:self.sens_idx+8]) < 0.9:
                 self.prev_max = cur_max
         
         
@@ -136,7 +140,7 @@ class AirSimEnv(gym.Env):
         self.init_pos = pos
     
     def reset(self, seed=None, options=None):
-        self.client.simPause(False)
+        # self.client.simPause(False)
         self.client.reset()
         self.client.enableApiControl(True, self.vehicle_name)
         self.client.armDisarm(True, self.vehicle_name)
@@ -157,37 +161,59 @@ class AirSimEnv(gym.Env):
                     if not valid_goal:
                         break
             self.client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(pos[0], pos[1], self.z), airsim.to_quaternion(0, 0, 0)), True) 
-        self.client.simPause(True)
+        # self.client.simPause(True)
         
-        obs = self._get_obs()
+        self.obs, z_val = self._get_obs()
         
-        return obs, {}
+        return self.obs, {"z_val":z_val}
     
     def step(self, action):
         # self.client.moveByVelocityAsync(float(action[0]), 
         #                             float(action[1]), 
         #                             0, 
         #                             duration=self.dt).join()
-        self.client.simPause(False)
+        # self.client.simPause(False)
+        # self.client.moveByVelocityZAsync(float(action[0]), 
+        #                             float(action[1]), 
+        #                             self.z,
+        #                             yaw_mode={'is_rate':False, 'yaw_or_rate':0},
+        #                             duration=self.dt).join()
         self.client.moveByVelocityZAsync(float(action[0]), 
                                     float(action[1]), 
                                     self.z,
-                                    yaw_mode={'is_rate':False, 'yaw_or_rate':0},
+                                    drivetrain=airsim.DrivetrainType.ForwardOnly, yaw_mode=airsim.YawMode(is_rate=False),
                                     duration=self.dt).join()
-        self.client.simPause(True)
+        # self.client.simPause(True)
         # self.client.simContinueForTime(self.dt)
-        obs = self._get_obs()
+        # norm = np.linalg.norm(action)
+        # if norm > 0:
+        #     unit_vec = action / norm
+        # else:
+        #     unit_vec = action
+        # waypt_x = self.obs[0] + 50*unit_vec[0]
+        # waypt_y = self.obs[1] + 50*unit_vec[1]
+        # self.client.moveToPositionAsync(float(waypt_x), float(waypt_y), self.z, velocity=float(norm), timeout_sec=0.1,
+        #                             drivetrain=airsim.DrivetrainType.ForwardOnly, yaw_mode=airsim.YawMode(is_rate=False)).join()
+        # self.client.simContinueForTime(self.dt)
+        # time.sleep(0.1)
+        self.obs, z_val = self._get_obs()
         
-        return obs, 0, False, False, {}
+        return self.obs, 0, False, False, {"z_val":z_val}
     
     def _get_obs(self):
         state = self.client.simGetGroundTruthKinematics(self.vehicle_name)
         pos = state.position
         vel = state.linear_velocity
+        ori = state.orientation
+        q = np.array([ori.w_val, ori.x_val, ori.y_val, ori.z_val])
+        yaw = math.atan2(2.0*(q[0]*q[3] + q[1]*q[2]), 1 - 2*(q[2]*q[2] + q[3]*q[3]))
         readings = self._sensor_readings()
-        
+        # print('Original\n', readings[:-1])
+        rd_conv = sens_rel_to_global(readings, -yaw)
+        readings[:-1] = rd_conv
+
         pos_np = np.array([pos.x_val, pos.y_val, vel.x_val, vel.y_val])
-        return np.concatenate([pos_np, readings.flat])
+        return np.concatenate([pos_np, readings.flat]), pos.z_val
     
     def _sensor_readings(self):
         sens_reads = np.zeros(9)

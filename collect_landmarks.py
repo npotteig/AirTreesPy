@@ -1,6 +1,6 @@
 import argparse
 
-from navigation.collect_landmarks import run
+from training.collect_landmarks import run
 
 parser = argparse.ArgumentParser()
 

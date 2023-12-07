@@ -4,9 +4,9 @@ import torch.nn.functional as F
 
 import numpy as np
 
-from higl.models import ControllerActor, ControllerCritic, ManagerActor, ManagerCritic, RndPredictor
+from shared.higl.models import ControllerActor, ControllerCritic, ManagerActor, ManagerCritic, RndPredictor
 # from higl.utils import RunningMeanStd
-from planner.goal_plan import Planner as BasePlanner
+from shared.planner.goal_plan import Planner as BasePlanner
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

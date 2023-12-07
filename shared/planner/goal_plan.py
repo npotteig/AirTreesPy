@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from .sample import farthest_point_sample
-from airmap.airmap_objects import inside_object
+from shared.map.airmap_objects import inside_object
 
 """
 Planner module is derived from Map-planner (https://github.com/FangchenLiu/map_planner)

@@ -7,24 +7,24 @@ import pandas as pd
 from math import ceil
 from collections import OrderedDict
 
-import higl.utils as utils
-import higl.higl as higl
-from higl.models import ANet
-from higl.safety_layer import SafetyLayer
+import shared.higl.utils as utils
+import shared.higl.higl as higl
+from shared.higl.models import ANet
+from shared.higl.safety_layer import SafetyLayer
 
 import airsim
 
 import gymnasium as gym
-from env import *
+from shared.env import *
 
 import time
 
-from env.env import AirWrapperEnv
+from shared.env.env import AirWrapperEnv
 
-import airmap.airmap_objects as airobjects
-from airmap.blocks_tree_generator import build_blocks_world
-from airmap.blocks_tree_generator import obstacle_info as blocks_obstacle_info
-from airmap.airmap_objects import obstacle_info as air_obstacle_info
+import shared.map.airmap_objects as airobjects
+from shared.map.blocks_tree_generator import build_blocks_world
+from shared.map.blocks_tree_generator import obstacle_info as blocks_obstacle_info
+from shared.map.airmap_objects import obstacle_info as air_obstacle_info
 
 def evaluate_policy(env,
                     env_name,
@@ -171,8 +171,8 @@ def evaluate_policy(env,
 
 def run(args):
     
-    if not os.path.exists("./navigation/replay_data"):
-        os.makedirs("./navigation/replay_data")
+    if not os.path.exists("./runs/run0/replay_data"):
+        os.makedirs("./runs/run0/replay_data")
 
     dt = 0.1 
     vehicle_name = "Drone1"
@@ -549,7 +549,7 @@ def run(args):
         # output_data["frames"].append(total_timesteps)
         # output_data['training_collisions'].append(train_collisions)
         output_df = pd.DataFrame(output_data)
-        output_df.to_csv(os.path.join("./navigation/replay_data/collect_5.csv"), float_format="%.4f", index=False)
+        output_df.to_csv(os.path.join("./runs/run0/replay_data/collect_5.csv"), float_format="%.4f", index=False)
         # np.save(args.save_replay_buffer + 'novelty_pq', novelty_pq.elems)
 
     print("Training finished.")

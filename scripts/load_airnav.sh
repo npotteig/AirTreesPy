@@ -17,8 +17,8 @@ CUDA_VISIBLE_DEVICES=${GPU} python train.py \
 --delta 0.5 \
 --adj_factor 0.7 \
 --load \
---load_dir "./pretrained/models" \
---load_safety_dir "./pretrained/safety" \
+--load_dir "./runs/pretrained/models" \
+--load_safety_dir "./runs/pretrained/safety" \
 --save_models \
---save_replay_buffer "navigation/replay_data/" \
+--save_replay_buffer "runs/run0/replay_data/" \
 --seed ${SEED}

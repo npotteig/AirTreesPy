@@ -7,22 +7,22 @@ import pandas as pd
 from math import ceil
 from collections import OrderedDict
 
-import higl.utils as utils
-import higl.higl as higl
-from higl.models import ANet
-from higl.safety_layer import SafetyLayer
+import shared.higl.utils as utils
+import shared.higl.higl as higl
+from shared.higl.models import ANet
+from shared.higl.safety_layer import SafetyLayer
 
 import airsim
 
 import gymnasium as gym
-from env import *
+from shared.env import *
 
 import time
 
-from env.env import AirWrapperEnv
+from shared.env.env import AirWrapperEnv
 
-import airmap.airmap_objects as airobjects
-from airmap.blocks_tree_generator import build_blocks_world
+import shared.map.airmap_objects as airobjects
+from shared.map.blocks_tree_generator import build_blocks_world
 
 
 def evaluate_policy(env,
@@ -35,6 +35,8 @@ def evaluate_policy(env,
                     manager_propose_frequency=10,
                     eval_idx=0,
                     eval_episodes=5,
+                    sens_idx=4,
+                    num_sensors=8
                     ):
     print("Starting evaluation number {}...".format(eval_idx))
     env.evaluate = True
@@ -68,12 +70,13 @@ def evaluate_policy(env,
                 
                 state_copy = state.copy()
                 state_copy[:2] = 0
+                # state_copy[sens_idx-1] = 0
                 constraints = env.get_constraint_values(state_copy)
                 
-                if np.any(state_copy[4:12] > 0):
+                if np.any(state_copy[sens_idx:sens_idx+num_sensors] > 0):
                     action = safe_layer.get_safe_action(state_copy, action, constraints)
-                    if np.max(state[4:12]) > 0.9:
-                        potential = utils.calc_potential(state_copy[4:12])
+                    if np.max(state[sens_idx:sens_idx+num_sensors]) > 0.9:
+                        potential = utils.calc_potential(state_copy[sens_idx:sens_idx+num_sensors])
                         action = np.clip(10 * potential, -10, 10)
 
                 
@@ -133,10 +136,10 @@ def evaluate_policy(env,
 
 def run(args):
     
-    if not os.path.exists("./navigation/results"):
-        os.makedirs("./navigation/results")
-    if not os.path.exists("./navigation/replay_data"):
-        os.makedirs("./navigation/replay_data")
+    if not os.path.exists("./runs/run0/results"):
+        os.makedirs("./runs/run0/results")
+    if not os.path.exists("./runs/run0/replay_data"):
+        os.makedirs("./runs/run0/replay_data")
     if args.save_models and not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
     if not os.path.exists(args.log_dir):
@@ -159,6 +162,8 @@ def run(args):
     
     env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env))
         
+    sens_idx = env.sens_idx
+    num_sensors = env.num_sensors
 
     max_action = float(env.action_space.high[0])
     train_ctrl_policy_noise = args.train_ctrl_policy_noise
@@ -334,7 +339,7 @@ def run(args):
         RND = None
         
     start_time = time.time()
-    client.simPause(True)
+    # client.simPause(True)
     while total_timesteps < args.max_timesteps:
         if done:
             # Update Novelty Priority Queue
@@ -513,15 +518,16 @@ def run(args):
         policy_action = ctrl_noise.perturb_action(policy_action, -max_action, max_action)
         
         state_copy = state.copy()
-        state_copy[:2] = 0
+        state_copy[:goal_dim] = 0
+        # state_copy[sens_idx-1] = 0
         constraints = env.get_constraint_values(state_copy)
         
         inter_temp = False
         backup_action = policy_action
-        if np.any(state_copy[4:12] > 0):
+        if np.any(state_copy[sens_idx:sens_idx+num_sensors] > 0):
             backup_action = safe_layer.get_safe_action(state_copy, policy_action, constraints)
-            if np.max(state[4:12]) > 0.9:
-                potential = utils.calc_potential(state_copy[4:12])
+            if np.max(state[sens_idx:sens_idx+num_sensors]) > 0.9:
+                potential = utils.calc_potential(state_copy[sens_idx:sens_idx+num_sensors])
                 backup_action = np.clip(10 * potential, -10, 10)
             inter_temp = True
         action = policy_action if not inter_temp else backup_action
@@ -532,15 +538,14 @@ def run(args):
     
 
         # Update cumulative reward for the manager
-        manager_transition['reward'] += manager_reward * args.man_rew_scale 
+        correction = np.linalg.norm((action - policy_action))
+        correction_z = np.abs(-30 - info['z_val'])
+        manager_transition['reward'] += manager_reward * args.man_rew_scale - 0.1 * correction
 
         next_goal = next_tup["desired_goal"]
         next_achieved_goal = next_tup['achieved_goal']
         next_state = next_tup["observation"]
         collide = next_state[-1]
-        
-        next_state_copy = next_state.copy()
-        next_state_copy[:2] = 0
         
 
         traj_buffer.append(next_achieved_goal)
@@ -560,10 +565,11 @@ def run(args):
         if collide == 1:
             train_collisions += 1
         
-        max_reading = np.max(next_state[4:12])
-        inter_temp = max_reading > 0.8
-        if inter_temp:
-            controller_reward += -5
+        controller_reward -= 0.1*correction_z
+        # max_reading = np.max(next_state[4:12])
+        # inter_temp = max_reading > 0.8
+        # if inter_temp:
+        #     controller_reward += -5
 
         controller_goal = subgoal
         if env_done:
@@ -660,5 +666,5 @@ def run(args):
         np.save(args.save_replay_buffer + 'novelty_pq', novelty_pq.elems)
 
     output_df = pd.DataFrame(output_data)
-    output_df.to_csv(os.path.join("./navigation/results", file_name+".csv"), float_format="%.4f", index=False)
+    output_df.to_csv(os.path.join("./runs/run0/results", file_name+".csv"), float_format="%.4f", index=False)
     print("Training finished.")

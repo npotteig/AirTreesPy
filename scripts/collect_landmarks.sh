@@ -14,7 +14,7 @@ CUDA_VISIBLE_DEVICES=${GPU} python collect_landmarks.py \
 --delta 0.5 \
 --adj_factor 0.7 \
 --load \
---load_dir "./pretrained/models" \
---load_safety_dir "./pretrained/safety" \
---save_replay_buffer "navigation/replay_data/" \
+--load_dir "./runs/pretrained/models" \
+--load_safety_dir "./runs/pretrained/safety" \
+--save_replay_buffer "runs/replay_data/" \
 --seed ${SEED}

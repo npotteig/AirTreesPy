@@ -22,6 +22,31 @@ import math
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+def interpolate(r0, theta0, r1, target_theta):
+    t = (target_theta - theta0) / (math.pi/4)
+    inter_r = (1 - t) * r0 + t*r1
+    return inter_r
+
+# Convert relative sensor information to fixed global directions (i.e. North, South, East, West, ...)
+def sens_rel_to_global(sensor_info, ori=0):
+    # Order of the Distance Sensors relevant to angle
+    magnitudes = np.array([0, 1, 7, 2, 6, 3, 5, 4])
+    sensor_offsets = [i * math.pi/4 for i in range(8)]
+    
+    adjusted_sensor_info = np.zeros(8)
+    for i in range(8):
+        angle_i = (sensor_offsets[i] + ori) % (2 * math.pi)
+        
+        index_i = int(angle_i // (math.pi/4))
+        index_next = (index_i + 1) % 8
+        
+        adjusted_sensor_info[i] = interpolate(sensor_info[np.where(magnitudes==index_i)[0]],
+                                              sensor_offsets[index_i],
+                                              sensor_info[np.where(magnitudes==index_next)[0]],
+                                                angle_i 
+                                                )[0]
+    return adjusted_sensor_info[magnitudes]
+
 def calc_potential(sensor_info):
     # Order of the Distance Sensors relevant to angle
     magnitudes = [0, 1, 7, 2, 6, 3, 5, 4]

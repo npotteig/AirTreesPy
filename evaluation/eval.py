@@ -2,9 +2,9 @@ import torch
 
 import numpy as np
 
-import higl.utils as utils
-import higl.higl as higl
-from higl.safety_layer import SafetyLayer
+import shared.higl.utils as utils
+import shared.higl.higl as higl
+from shared.higl.safety_layer import SafetyLayer
 
 import airsim
 import math
@@ -12,16 +12,16 @@ import os
 import pandas as pd
 
 import gymnasium as gym
-from env import *
+from shared.env import *
 
 import time
 
-from env.env import AirWrapperEnv
+from shared.env.env import AirWrapperEnv
 
-import airmap.airmap_objects as airobjects
-from airmap.blocks_tree_generator import build_blocks_world
-from airmap.blocks_tree_generator import obstacle_info as blocks_obstacle_info
-from airmap.airmap_objects import obstacle_info as air_obstacle_info
+import shared.map.airmap_objects as airobjects
+from shared.map.blocks_tree_generator import build_blocks_world
+from shared.map.blocks_tree_generator import obstacle_info as blocks_obstacle_info
+from shared.map.airmap_objects import obstacle_info as air_obstacle_info
 
 
 def evaluate_policy(env,
@@ -51,13 +51,13 @@ def evaluate_policy(env,
         for eval_ep in range(eval_episodes):
             print(eval_ep)
             obs, _ = env.reset()
-            env.multi_goal = True
-            goal_changes = np.array([[8, -1], [10.5, 7], [14, 16]])
-            goal_changes_idx = 0
-            env.change_goal(goal_changes[goal_changes_idx])
+            # env.multi_goal = True
+            # goal_changes = np.array([[8, -1], [10.5, 7], [14, 16]])
+            # goal_changes_idx = 0
+            # env.change_goal(goal_changes[goal_changes_idx])
             
-            # goal = obs["desired_goal"]
-            goal = goal_changes[goal_changes_idx]
+            goal = obs["desired_goal"]
+            # goal = goal_changes[goal_changes_idx]
             
             achieved_goal = obs["achieved_goal"]
             state = obs["observation"]
@@ -81,7 +81,7 @@ def evaluate_policy(env,
             # goal_changes = np.array([[20, 20], [30, 30], [40, 40]])
             
             while not done:
-                if goal_changes_idx < len(goal_changes) - 1 and -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0 :
+                # if goal_changes_idx < len(goal_changes) - 1 and -np.linalg.norm(goal - achieved_goal, axis=-1) > -1.0 :
                 #     potential_goal = env.cur_goal + 10
                 #     pot_goal_10 = (potential_goal * 10).tolist()
                 #     valid_goal = False
@@ -97,23 +97,21 @@ def evaluate_policy(env,
                 #             if not valid_goal:
                 #                 break
                     
-                    goal_changes_idx += 1
-                    env.change_goal(goal_changes[goal_changes_idx])
-                    ld = np.array([0, 0])
-                    cur_ld = 0
-                    ld_idx = None
-                    print(env.cur_goal)
+                    # goal_changes_idx += 1
+                    # env.change_goal(goal_changes[goal_changes_idx])
+                    # ld = np.array([0, 0])
+                    # cur_ld = 0
+                    # ld_idx = None
+                    # print(env.cur_goal)
                     
-                    manager_policy.planner.eval_build_landmark_graph(env.desired_goal, controller_policy, controller_replay_buffer, start=env.prev_goal, step_size=2, obstacle_info=obstacle_info)
+                    # manager_policy.planner.eval_build_landmark_graph(env.desired_goal, controller_policy, controller_replay_buffer, start=env.prev_goal, step_size=2, obstacle_info=obstacle_info)
                 if -np.linalg.norm(ld - achieved_goal, axis=-1) > -1.0 or step_count == 0:    
                     if -np.linalg.norm(goal - achieved_goal, axis=-1) <= -1.5:
                         cur_ld += 1
                         ld, ld_idx = manager_policy.planner.get_next_landmark(state, ld, goal, ld_idx)
                     else:
                         ld = goal
-                    # print(ld)
-                
-                    
+                    # print(ld) 
                 
                 if step_count % manager_propose_frequency == 0:
                     subgoal = manager_policy.sample_goal(state, ld)
@@ -130,25 +128,33 @@ def evaluate_policy(env,
                 else :
                     policy_action = controller_policy.select_action(state, subgoal)
                 
+                
                 state_copy = state.copy()
+                # print(state_copy[4:-1])
                 state_copy[:2] = 0
+                # state_copy[4] = 0
                 constraints = env.get_constraint_values(state_copy)
                 
+        
+                # policy_action = np.array([5, 5])
 
-                if np.any(state[4:12] > 0):
+                if np.any(constraints > 0):
                     action = safelayer.get_safe_action(state_copy, policy_action, constraints)
                     if np.max(state[4:12]) > 0.9:
                         potential = utils.calc_potential(state_copy[4:12])
                         action = np.clip(5 * potential, -10, 10)
                 else:
                     action = policy_action     
-                    
+                
+                
+                # action = [0, -10]
                 new_obs, reward, done, trunc, info = env.step(action)
                 if new_obs['observation'][-1] == 1:
                     collision_count += 1
                 
                 is_success = info['is_success']
                 if is_success:
+                    print('Success')
                     env_goals_achieved += 1
                     goals_achieved += 1
                     done = True

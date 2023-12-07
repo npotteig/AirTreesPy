@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
-from higl.models import ConstraintModel
-from higl.utils import SafetyMemory
+from shared.higl.models import ConstraintModel
+from shared.higl.utils import SafetyMemory
 
 from tqdm import tqdm
 
@@ -22,6 +22,9 @@ class SafetyLayer:
         if self.env:
             self.action_low = self.env.action_space.low
             self.action_high = self.env.action_space.high
+            self.goal_dim = self.env.goal_dim
+            self.sens_idx = self.env.sens_idx
+            self.num_sensors = self.env.num_sensors
             # # init constraint model
             state_dim = self.env.observation_space.shape[0]
             action_dim = self.env.action_space.shape[0]
@@ -30,7 +33,7 @@ class SafetyLayer:
         else:
             self.action_low = np.array([-10.0, -10.0])
             self.action_high = np.array([10.0, 10.0])
-            state_dim = 13
+            state_dim = 14
             action_dim = 2
             self.models = [ConstraintModel(state_dim, action_dim).to(self.device)
                        for _ in range(8)]
@@ -71,7 +74,8 @@ class SafetyLayer:
             step_reset = np.random.randint(1, 20)
             action = self.env.action_space.sample()
             while not done:
-                state[:2] = 0
+                state[:self.goal_dim] = 0
+                # state[self.sens_idx-1] = 0
                 # get random action
                 if near_obstacle and timesteps % step_reset == 0:
                     action = self.env.action_space.sample()
@@ -82,7 +86,7 @@ class SafetyLayer:
                 # get changed constraint values
                 next_constraints = self.env.get_constraint_values(next_state)
                 # push to memory only if obstacle detected
-                if np.any(state[4:12] > 0):
+                if np.any(state[self.sens_idx:self.sens_idx+self.num_sensors] > 0):
                     self.memory.push(state, action, constraints, next_constraints)
                     near_obstacle = True
                 state = next_state
@@ -177,6 +181,7 @@ class SafetyLayer:
         else:
             # sample random action episodes and store them in memory
             self._sample_steps(self.sample_data_episodes)
+            print(f"Replay Buffer Saved with {len(self.memory)} datapoints")
         print("Finished Episode Sampling")
         print("==========================================================")
         print(f"Training Phase for {self.epochs} epochs")

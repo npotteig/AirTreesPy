@@ -4,27 +4,26 @@ import os
 import torch
 
 import gymnasium as gym
-from env import *
+from shared.env import *
 import numpy as np
 
-from higl.safety_layer import SafetyLayer
-from env.env import AirWrapperEnv
+from shared.higl.safety_layer import SafetyLayer
+from shared.env.env import AirWrapperEnv
 
-import airmap.airmap_objects as airobjects
-from airmap.blocks_tree_generator import build_blocks_world
+import shared.map.airmap_objects as airobjects
+from shared.map.blocks_tree_generator import build_blocks_world
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
 
 def run(args):
-    if not os.path.exists("./navigation/safety"):
-        os.makedirs("./navigation/safety")
+    if not os.path.exists("./runs/safety"):
+        os.makedirs("./runs/safety")
     
     if args.load_buffer:
         if args.load_models:
             safelayer = SafetyLayer(device=device, load_buffer=args.load_replay_buffer, load_ckpt_dir=args.load_models_dir)
         else:
-            safelayer = SafetyLayer(device=device, load_buffer=args.load_replay_buffer, load_ckpt_dir=args.load_models_dir)
+            safelayer = SafetyLayer(device=device, load_buffer=args.load_replay_buffer)
     else:
         dt = 0.1 
         vehicle_name = "Drone1"
@@ -38,12 +37,12 @@ def run(args):
         else:
             build_blocks_world(client=client, load=True)
         
-        env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env))
+        env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env, randomize_start=True))
         
         if args.load_models:
             safelayer = SafetyLayer(env, device=device, load_ckpt_dir=args.load_models_dir)
         else:
-            safelayer = SafetyLayer(env, device=device, load_ckpt_dir=args.load_models_dir)
+            safelayer = SafetyLayer(env, device=device)
     safelayer.train(batch_size=args.batch_size, lr=args.lr, sample_data_episodes=args.sample_data_episodes,
                     buffer_size=args.buffer_size, epochs=args.epochs, train_per_epoch=args.training_steps_per_epoch,
                     eval_per_epoch=args.evaluation_steps_per_epoch)

@@ -1,6 +1,6 @@
 import argparse
 
-from navigation.bt_eval import run
+from evaluation.bt_eval import run
 
 parser = argparse.ArgumentParser()
 

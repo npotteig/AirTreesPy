@@ -17,7 +17,7 @@ To use pretrained data, as training runs can take hours, unzip the file provided
 Scripts are compatible with using pretrained weights. If you want to use your model data, you will need to modify scripts with location of your model data.
 
 ```shell
-unzip pretrained.zip
+unzip runs/pretrained.zip
 ```
 
 ## Training Safety Layer
@@ -44,7 +44,7 @@ Then in a separate shell, in the root directory, execute the following:
 
 ./scripts/airnav.sh dense 5e5 0 2
 ```
-This will save models to `navigation/models` that will then be loaded in evaluation.
+This will save models to `runs/run0/models` that will then be loaded in evaluation.
 
 ## Transfer Learning in Airsim Environment
 
@@ -91,5 +91,5 @@ There are multiple configurations for running the EBT. Training and Transfer are
 ```
 
 Relevant Files to Look at:  
-* `navigation/bt_eval.py` - Inside evaluate_policy function, you can modify `blackboard.goal_list` to the list of goals/waypoints you prefer. You can modify `blackboard.env.set_init_pos` parameter to change initial position of drone. Both input meters/10 units (i.e. 5.5 -> 55 meters).
-* `navigation/bt_eval_nodes.py` - Implementation of the behavior tree nodes
+* `evaluation/bt_eval.py` - Inside evaluate_policy function, you can modify `blackboard.goal_list` to the list of goals/waypoints you prefer. You can modify `blackboard.env.set_init_pos` parameter to change initial position of drone. Both input meters/10 units (i.e. 5.5 -> 55 meters).
+* `evaluation/bt_eval_nodes.py` - Implementation of the behavior tree nodes
