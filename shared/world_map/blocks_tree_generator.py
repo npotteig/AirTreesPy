@@ -58,7 +58,7 @@ def build_blocks_world(client, load=False):
 
     pose = airsim.Pose()
     
-    fileDir = os.path.dirname(os.path.abspath(__file__)) + '/obstacles/'
+    fileDir = os.path.dirname(os.path.abspath(__file__)) + '/tree_obstacles/'
     
     if not os.path.exists(fileDir):
         os.makedirs(fileDir)

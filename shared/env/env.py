@@ -1,14 +1,15 @@
 import gymnasium as gym
 import numpy as np
-import shared.map.airmap_objects as airobjects
-import shared.map.blocks_tree_generator as blocks_gen
+# import shared.map.airmap_objects as airobjects
+# import shared.map.blocks_tree_generator as blocks_gen
+from shared.world_map.world_map import Map
 import time
 import airsim
 import math
 from shared.higl.utils import sens_rel_to_global
 
 class AirWrapperEnv():
-    def __init__(self, base_env):
+    def __init__(self, base_env, world_map: Map, scale_factor=0.1):
         self.evaluate = False
         self.base_env = base_env
         self.obs_info = self.base_env.unwrapped.obs_info
@@ -18,9 +19,11 @@ class AirWrapperEnv():
         self.num_sensors = 8
         self.goal_list = np.array([[8, 8], [8, -8], [-8, -8], [-8, 8],
                                    [8, 0], [-8, 0], [0, 8], [0, -8]])
+        self.world_map = world_map
+        self.scale_factor = scale_factor
     
     def set_init_pos(self, pos):
-        self.base_env.set_init_pos(pos * 10)
+        self.base_env.set_init_pos(pos / self.scale_factor)
         
     def reset(self):
         self.count = 0
@@ -34,15 +37,13 @@ class AirWrapperEnv():
             valid_goal = False
             while not valid_goal:
                 self.desired_goal = np.random.uniform((-10, -10), (10, 10))
-                test_goal = (self.desired_goal * 10).tolist()
-                for obstacle in self.obs_info:
-                    valid_goal = not airobjects.inside_object(test_goal, obstacle)
-                    if not valid_goal:
-                        break
-        self.prev_goal = self.base_env.unwrapped.init_pos / 10
-        self.cur_goal = self.base_env.unwrapped.init_pos / 10
+                test_goal = (self.desired_goal / self.scale_factor).tolist()
+                valid_goal = not self.world_map.inside_objects(test_goal)
+
+        self.prev_goal = self.base_env.unwrapped.init_pos * self.scale_factor
+        self.cur_goal = self.base_env.unwrapped.init_pos * self.scale_factor
         obs, info = self.base_env.reset()
-        obs[:self.goal_dim] /= 10
+        obs[:self.goal_dim] *= self.scale_factor
         self.reset_count += 1
         self.reset_count %= 8
         
@@ -57,7 +58,7 @@ class AirWrapperEnv():
     def step(self, action):
         self.count += 1
         obs, rew, done, trunc, info = self.base_env.step(action)
-        obs[:self.goal_dim] /= 10
+        obs[:self.goal_dim] *= self.scale_factor
         obs[:self.goal_dim] -= self.prev_goal
         next_obs = {
             'observation': obs.copy(),
@@ -84,10 +85,7 @@ class AirWrapperEnv():
         return 8
 
     def get_constraint_values(self, state):
-        # print(self.locked)
         temp_thresh = np.clip(1 - np.linalg.norm(state[2:4]) / 10, 0, 0.9)
-        norm = np.linalg.norm(state[2:4])
-        # self.locked = False
         if not self.locked:
             self.thresh = temp_thresh
             constr_val = np.array(state[self.sens_idx:self.sens_idx+self.num_sensors] - self.thresh)
@@ -95,7 +93,6 @@ class AirWrapperEnv():
                 self.prev_max = np.max(constr_val)
                 self.locked = True
         else:
-            # temp_const = np.array(state[4:12] - temp_thresh)
             constr_val = np.array(state[self.sens_idx:self.sens_idx+self.num_sensors] - self.thresh)
             cur_max = np.max(constr_val)
             if cur_max < self.prev_max:
@@ -116,12 +113,13 @@ class AirWrapperEnv():
         
 
 class AirSimEnv(gym.Env):
-    def __init__(self, client, dt, vehicle_name="Drone1", randomize_start=False, type_of_env="training") -> None:
+    def __init__(self, client, dt, world_map: Map, vehicle_name="Drone1", randomize_start=False, type_of_env="training", sens_range=20) -> None:
         self.client = client
         self.dt = dt
         self.vehicle_name = vehicle_name
         self.randomize_start = randomize_start
-        self.obs_info = blocks_gen.obstacle_info if type_of_env == "transfer" else airobjects.obstacle_info
+        self.world_map = world_map
+        self.obs_info = world_map.obstacle_info
         self.init_pos = np.array([0, 0])
         
         
@@ -131,7 +129,7 @@ class AirSimEnv(gym.Env):
             self.z = -15
         
         self.goal_dim = 2
-        self._sensor_range = 20
+        self._sensor_range = sens_range
         
         self.observation_space = gym.spaces.Box(-200, 200, shape=(13,), dtype=float)
         self.action_space = gym.spaces.Box(-10, 10, shape=(2,), dtype=float)
@@ -156,10 +154,8 @@ class AirSimEnv(gym.Env):
             while not valid_goal:
                 pos = np.random.uniform((-90, -90), (90, 90))
                 test_goal = (pos).tolist()
-                for obstacle in self.obs_info:
-                    valid_goal = not airobjects.inside_object(test_goal, obstacle, buf=5)
-                    if not valid_goal:
-                        break
+                valid_goal = not self.world_map.inside_objects(test_goal, buf=5)
+ 
             self.client.simSetVehiclePose(airsim.Pose(airsim.Vector3r(pos[0], pos[1], self.z), airsim.to_quaternion(0, 0, 0)), True) 
         # self.client.simPause(True)
         

@@ -2,24 +2,21 @@ import torch
 
 import numpy as np
 
-import higl.utils as utils
-import higl.higl as higl
+import shared.higl.utils as utils
+import shared.higl.higl as higl
 
 import airsim
 
 import pandas as pd
 import os
 
-from higl.safety_layer import SafetyLayer
+from shared.higl.safety_layer import SafetyLayer
 
 import gymnasium as gym
-from env import *
+from shared.env import *
 
-from env.env import AirWrapperEnv
-
-import airmap.airmap_objects as airobjects
-from airmap.blocks_tree_generator import build_blocks_world
-from airmap.blocks_tree_generator import obstacle_info
+from shared.env.env import AirWrapperEnv
+from shared.world_map import BlocksMaze, BlocksTrees
 
 import evaluation.bt_nodes_eval as bt_nodes
 import py_trees
@@ -30,6 +27,7 @@ def build_blackboard(environment, manager_propose_frequency=10):
     # Setup BT stuff here
     blackboard = py_trees.blackboard.Client(name="Global")
     blackboard.register_key(key="env", access=py_trees.common.Access.WRITE)
+    blackboard.register_key(key="world_map", access=py_trees.common.Access.WRITE)
     blackboard.register_key(key="goal", access=py_trees.common.Access.WRITE)
     blackboard.register_key(key='achieved_goal', access=py_trees.common.Access.WRITE)
     blackboard.register_key(key="state", access=py_trees.common.Access.WRITE)
@@ -76,7 +74,7 @@ def build_baseline_bt(manager_policy,
     
     retrieved_potential_ld = bt_nodes.RetrievedPotentialLds()
     compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer, 
-                                                        step_size=2, obstacle_info=obstacle_info)
+                                                        step_size=2)
     potential_ld_fall.add_children([retrieved_potential_ld, compute_potential_ld])
     
     reach_goal = bt_nodes.ReachGoal()
@@ -108,7 +106,7 @@ def build_expert_bt(manager_policy,
     
     retrieved_potential_ld = bt_nodes.RetrievedPotentialLds()
     compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer, 
-                                                        step_size=2, obstacle_info=obstacle_info)
+                                                        step_size=2)
     potential_ld_fall.add_children([retrieved_potential_ld, compute_potential_ld])
     
     reach_goal = bt_nodes.ReachGoal()
@@ -162,7 +160,7 @@ def build_goal_change_bt(manager_policy,
     
     chg_goal = bt_nodes.UpdateGoal()
     compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer, 
-                                                        step_size=2, obstacle_info=obstacle_info)
+                                                        step_size=2)
     chg_goal_seq.add_children([chg_goal, compute_potential_ld])
     
     landmark_seq = py_trees.composites.Sequence(name='LdSeq', memory=False)
@@ -206,7 +204,7 @@ def build_gpbt(manager_policy,
     landmark_seq = py_trees.composites.Sequence(name='LdSeq', memory=True)
     move_seq = py_trees.composites.Sequence(name='MoveSeq', memory=True)
     compute_potential_ld = bt_nodes.ComputePotentialLds(manager_policy, controller_policy, controller_replay_buffer, 
-                                                        step_size=2, obstacle_info=obstacle_info)
+                                                        step_size=2)
     root.add_children([safe_seq, landmark_seq, move_seq, compute_potential_ld])
     
     not_safe = bt_nodes.NotSafe()
@@ -231,6 +229,7 @@ def build_gpbt(manager_policy,
 
 def evaluate_policy(root,
                     blackboard,
+                    world_map,
                     eval_episodes=5,
                     ):
     blackboard.env.evaluate = True
@@ -242,6 +241,7 @@ def evaluate_policy(root,
         blackboard.avg_controller_rew = 0.
         blackboard.global_steps = 0
         blackboard.goals_achieved = 0
+        blackboard.world_map = world_map
 
         for eval_ep in range(eval_episodes):
             print(eval_ep)
@@ -319,13 +319,12 @@ def run(args):
     client = airsim.MultirotorClient()
     client.confirmConnection()
     if args.type_of_env == "training":
-        airobjects.destroy_objects(client)
-        airobjects.spawn_walls(client, -200, 200, -32)
-        airobjects.spawn_obstacles(client, -32)
+        wrld_map = BlocksMaze(client)
     else:
-        build_blocks_world(client=client, load=True)
+        wrld_map = BlocksTrees(client, load=True)
+    wrld_map.build_world()
     
-    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env))
+    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, world_map=wrld_map, vehicle_name=vehicle_name, type_of_env=args.type_of_env), world_map=wrld_map)
 
     max_action = float(env.action_space.high[0])
 
@@ -470,4 +469,4 @@ def run(args):
     
     # Final evaluation
     avg_ep_rew, avg_controller_rew, avg_steps, avg_env_finish, = \
-        evaluate_policy(root, blackboard)
+        evaluate_policy(root, blackboard, wrld_map)

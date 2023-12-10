@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from .sample import farthest_point_sample
-from shared.map.airmap_objects import inside_object
 
 """
 Planner module is derived from Map-planner (https://github.com/FangchenLiu/map_planner)
@@ -144,7 +143,7 @@ class Planner:
 
         return self.landmarks_cov_nov_fg, self.dists_ld2goal
 
-    def grid_build_landmark_graph(self, final_goal, start, offset, size_val, step_size, obstacle_info):
+    def grid_build_landmark_graph(self, final_goal, start, offset, size_val, step_size, world_map):
         if isinstance(final_goal, torch.Tensor):
             final_goal = final_goal.detach().cpu().numpy()
         
@@ -153,11 +152,8 @@ class Planner:
         coords_offset = coordinates * 10 + start 
         landmarks = []
         for i in range(coordinates.shape[0]):
-            coord_not_in_obs = True
-            for obj in obstacle_info:
-                if inside_object(coords_offset[i] , obj):
-                    coord_not_in_obs = False
-                    break
+            coord_not_in_obs = not world_map.inside_objects(coords_offset[i])
+        
             if coord_not_in_obs:
                 landmarks.append(coordinates[i])
         landmarks = np.array(landmarks)
@@ -187,7 +183,7 @@ class Planner:
         return self.landmarks_cov_nov_fg, self.dists_ld2goal
 
     # This is used in evaluation so the landmark graph is only computed once
-    def eval_build_landmark_graph(self, final_goal, agent, replay_buffer, start=np.array([0, 0]), offset=10, size_val=20, step_size=1, obstacle_info = None, novelty_pq=None):
+    def eval_build_landmark_graph(self, final_goal, agent, replay_buffer, start=np.array([0, 0]), offset=10, size_val=20, step_size=1, world_map = None, novelty_pq=None):
         self.agent = agent
         self.replay_buffer = replay_buffer
         self.novelty_pq = novelty_pq
@@ -199,7 +195,7 @@ class Planner:
         if self.landmark_cov_sampling == 'fps':
             self.build_landmark_graph(final_goal.unsqueeze(0))
         else:
-            self.grid_build_landmark_graph(final_goal.unsqueeze(0), start, offset, size_val, step_size, obstacle_info)
+            self.grid_build_landmark_graph(final_goal.unsqueeze(0), start, offset, size_val, step_size, world_map)
             
 
     # This is called after eval_build_landmark_graph

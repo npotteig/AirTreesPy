@@ -20,9 +20,7 @@ from shared.env import *
 import time
 
 from shared.env.env import AirWrapperEnv
-
-import shared.map.airmap_objects as airobjects
-from shared.map.blocks_tree_generator import build_blocks_world
+from shared.world_map import BlocksMaze, BlocksTrees
 
 
 def evaluate_policy(env,
@@ -153,15 +151,14 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    if args.type_of_env == 'training':
-        airobjects.destroy_objects(client)
-        airobjects.spawn_walls(client, -200, 200, -32)
-        airobjects.spawn_obstacles(client, -32)
-    elif args.type_of_env == 'transfer':
-        build_blocks_world(client=client, load=True)
+    if args.type_of_env == "training":
+        wrld_map = BlocksMaze(client)
+    else:
+        wrld_map = BlocksTrees(client, load=True)
+    wrld_map.build_world()
     
-    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env))
-        
+    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, world_map=wrld_map, vehicle_name=vehicle_name, type_of_env=args.type_of_env), world_map=wrld_map)
+
     sens_idx = env.sens_idx
     num_sensors = env.num_sensors
 

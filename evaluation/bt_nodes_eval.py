@@ -1,6 +1,6 @@
 import py_trees
 import numpy as np
-import higl.utils as utils
+import shared.higl.utils as utils
 
 # Returns True if the Final Objective is reached
 class ReachGoal(py_trees.behaviour.Behaviour):
@@ -188,17 +188,17 @@ class UpdateGoal(py_trees.behaviour.Behaviour):
     
 class ComputePotentialLds(py_trees.behaviour.Behaviour):
 
-    def __init__(self, manager_policy, controller_policy, controller_replay_buffer, step_size=1, obstacle_info=None, name: str = "ComputePotentialLds!"):
+    def __init__(self, manager_policy, controller_policy, controller_replay_buffer, step_size=1, world_map=None, name: str = "ComputePotentialLds!"):
         super().__init__(name=name)
         self.blackboard = self.attach_blackboard_client()
         self.blackboard.register_key(key="built_landmark_graph", access=py_trees.common.Access.WRITE)
         self.blackboard.register_key(key='goal', access=py_trees.common.Access.READ)
         self.blackboard.register_key(key="env", access=py_trees.common.Access.WRITE)
+        self.blackboard.register_key(key="world_map", access=py_trees.common.Access.WRITE)
 
         self.manager_policy = manager_policy
         self.controller_policy = controller_policy
         self.controller_replay_buffer = controller_replay_buffer
-        self.obstacle_info = obstacle_info
         self.step_size = step_size
 
     def setup(self):
@@ -211,7 +211,7 @@ class ComputePotentialLds(py_trees.behaviour.Behaviour):
         self.manager_policy.init_planner()
         self.manager_policy.planner.eval_build_landmark_graph(self.blackboard.goal, self.controller_policy, self.controller_replay_buffer, 
                                                               start=self.blackboard.env.prev_goal, step_size=self.step_size, 
-                                                              obstacle_info = self.obstacle_info)
+                                                              world_map = self.blackboard.world_map)
         self.blackboard.built_landmark_graph = True
         new_status = py_trees.common.Status.SUCCESS
         return new_status

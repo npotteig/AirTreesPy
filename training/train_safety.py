@@ -9,9 +9,8 @@ import numpy as np
 
 from shared.higl.safety_layer import SafetyLayer
 from shared.env.env import AirWrapperEnv
+from shared.world_map import BlocksMaze, BlocksTrees 
 
-import shared.map.airmap_objects as airobjects
-from shared.map.blocks_tree_generator import build_blocks_world
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -31,11 +30,10 @@ def run(args):
         client.confirmConnection()
         
         if args.type_of_env == "training":
-            airobjects.destroy_objects(client)
-            airobjects.spawn_walls(client, -100, 100, -32)
-            airobjects.spawn_obstacles(client, -32)
+            wrld_map = BlocksMaze(client)
         else:
-            build_blocks_world(client=client, load=True)
+            wrld_map = BlocksTrees(client, load=True)
+        wrld_map.build_world()
         
         env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name, type_of_env=args.type_of_env, randomize_start=True))
         

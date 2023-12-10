@@ -20,11 +20,7 @@ from shared.env import *
 import time
 
 from shared.env.env import AirWrapperEnv
-
-import shared.map.airmap_objects as airobjects
-from shared.map.blocks_tree_generator import build_blocks_world
-from shared.map.blocks_tree_generator import obstacle_info as blocks_obstacle_info
-from shared.map.airmap_objects import obstacle_info as air_obstacle_info
+from shared.world_map import BlocksMaze, BlocksTrees 
 
 def evaluate_policy(env,
                     env_name,
@@ -34,7 +30,6 @@ def evaluate_policy(env,
                     calculate_controller_reward,
                     ctrl_rew_scale,
                     controller_replay_buffer,
-                    obstacle_info,
                     manager_propose_frequency=10,
                     eval_idx = 0,
                     eval_episodes=5,
@@ -54,7 +49,7 @@ def evaluate_policy(env,
             achieved_goal = obs["achieved_goal"]
             state = obs["observation"]
             manager_policy.init_planner()
-            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, step_size=1, obstacle_info=obstacle_info)
+            manager_policy.planner.eval_build_landmark_graph(goal, controller_policy, controller_replay_buffer, step_size=1)
             ld = achieved_goal
             ld_idx = None
             cur_ld = 0
@@ -178,16 +173,14 @@ def run(args):
     vehicle_name = "Drone1"
     client = airsim.MultirotorClient()
     client.confirmConnection()
-    if args.type_of_env == 'training':
-        airobjects.spawn_walls(client, -200, 200, -32)
-        airobjects.spawn_obstacles(client, -32)
-        obstacle_info = air_obstacle_info
-    elif args.type_of_env == 'transfer':
-        build_blocks_world(client=client, load=True)
-        obstacle_info = blocks_obstacle_info
+    if args.type_of_env == "training":
+        wrld_map = BlocksMaze(client)
+    else:
+        wrld_map = BlocksTrees(client, load=True)
+    wrld_map.build_world()
     
-    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, vehicle_name=vehicle_name), args.type_of_env)
-        
+    env = AirWrapperEnv(gym.make(args.env_name, client=client, dt=dt, world_map=wrld_map, vehicle_name=vehicle_name, type_of_env=args.type_of_env), world_map=wrld_map)
+
 
     max_action = float(env.action_space.high[0])
     train_ctrl_policy_noise = args.train_ctrl_policy_noise
@@ -366,7 +359,7 @@ def run(args):
                     final_x, final_y, final_z, final_subgoal_x, final_subgoal_y, final_subgoal_z = \
                         evaluate_policy(env, args.env_name, manager_policy, controller_policy, safe_layer,
                                         calculate_controller_reward, args.ctrl_rew_scale,
-                                        controller_buffer, obstacle_info,
+                                        controller_buffer,
                                         args.manager_propose_freq, len(evaluations))
                     
                     print("Training Collisions:", train_collisions)
